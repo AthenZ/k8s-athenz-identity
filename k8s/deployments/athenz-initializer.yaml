@@ -1,0 +1,33 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: athenz-initializer
+  labels:
+    app: athenz-initializer
+spec:
+  replicas: 1 # must not be greater than 1 until HA is available
+  template:
+    metadata:
+      initializers:
+        pending: [] # does this work?
+      labels:
+        app: athenz-initializer
+      name: athenz-initializer
+    spec:
+      serviceAccountName: athenz-initializer
+      volumes:
+      - { name: "sign-private-dir", secret: { secretName: "athenz-initializer-private" } }
+
+      containers:
+      - name: main
+        image: local/k8s-athenz-initializer:latest
+        imagePullPolicy: Never
+        env:
+        - { name: "ATHENZ_INIT_CONFIG_NAMESPACE", valueFrom: { fieldRef: { fieldPath: "metadata.namespace" } } }
+        args:
+        - "--provider=k8s.root"
+        - "--configmap=athenz-initializer"
+        - "--dns-suffix=example.cloud"
+        - "--sign-key-dir=/var/keys/private"
+        volumeMounts:
+        - { name: "sign-private-dir", mountPath: "/var/keys/private", readOnly: true }

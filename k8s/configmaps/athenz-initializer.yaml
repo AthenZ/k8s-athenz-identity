@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: athenz-initializer
+data:
+  init-config: |
+    name: athenz.initializer.kubernetes.io
+    annotationTrigger: initializer.kubernetes.io/athenz
+    initTemplate: |
+        name: sia-init
+        image: local/k8s-athenz-sia:latest
+        imagePullPolicy: Never
+        command: ["/usr/bin/athenz-sia"]
+        args: [ "--mode=init", "--endpoint=http://mock-athenz.kube-system/zts/v1" ]
+        resources:
+          limits:   { cpu: "1000m", memory: "512Mi" }
+          requests: { cpu:  "100m", memory:  "64Mi" }
+        volumeMounts:
+        - { name: ntoken,    mountPath: /tokens }
+        - { name: tlscerts,  mountPath: /var/tls/athenz }
+
+    refreshTemplate: |
+        name: sia-refresh
+        image: local/k8s-athenz-sia:latest
+        imagePullPolicy: Never
+        command: ["/usr/bin/athenz-sia"]
+        args: [ "--mode=refresh", "--endpoint=http://mock-athenz.kube-system/zts/v1" ]
+        resources:
+          limits:   { cpu: "1000m", memory: "512Mi" }
+          requests: { cpu:  "100m", memory:  "64Mi" }
+        volumeMounts:
+        - { name: ntoken,    mountPath: /tokens }
+        - { name: tlscerts,  mountPath: /var/tls/athenz }

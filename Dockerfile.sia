@@ -1,0 +1,4 @@
+FROM ubuntu
+ADD ./_build/bin/athenz-sia /usr/bin/athenz-sia
+ENTRYPOINT ["/usr/bin/athenz-sia"]
+

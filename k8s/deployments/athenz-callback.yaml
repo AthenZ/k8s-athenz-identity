@@ -1,0 +1,68 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: athenz-callback
+  name: athenz-callback
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: athenz-callback
+      name: athenz-callback
+    spec:
+      serviceAccountName: athenz-callback
+      volumes:
+      - { name: "sign-public-dir", secret: { secretName: "athenz-initializer-public" } }
+      - { name: "service-identity-dir", secret: { secretName: "athenz-initializer-identity" } }
+      - { name: "tlscerts", emptyDir: {} }
+      - { name: "ntoken", emptyDir: {} }
+
+      initContainers:
+      - name: sia-init
+        image: local/k8s-athenz-control-sia:latest
+        imagePullPolicy: Never
+        args:
+        - "--mode=init"
+        - "--auth-header=Athenz-Principal-Auth"
+        - "--dns-suffix=example.cloud"
+        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
+        - "--identity-dir=/var/tls/athenz/private"
+        - "--cert-file=/var/tls/athenz/public/service.cert"
+        env: [ { name: "ATHENZ_DOMAIN", value: "k8s"}, { "name": "ATHENZ_SERVICE", value: "root" }]
+        volumeMounts:
+        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
+        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
+        - { name: "ntoken", mountPath: "/tokens", readOnly: false }
+
+      containers:
+      - name: sia-refresh
+        image: local/k8s-athenz-control-sia:latest
+        imagePullPolicy: Never
+        args:
+        - "--mode=refresh"
+        - "--auth-header=Athenz-Principal-Auth"
+        - "--dns-suffix=example.cloud"
+        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
+        - "--identity-dir=/var/tls/athenz/private"
+        - "--cert-file=/var/tls/athenz/public/service.cert"
+        env: [ { name: "ATHENZ_DOMAIN", value: "k8s"}, { "name": "ATHENZ_SERVICE", value: "root" }]
+        volumeMounts:
+        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
+        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
+        - { name: "ntoken", mountPath: "/tokens", readOnly: false }
+
+      - name: main
+        image: local/k8s-athenz-callback:latest
+        imagePullPolicy: Never
+        args:
+        - "--sign-pub-dir=/var/keys/public"
+        - "--tls-cert=/var/tls/athenz/public/service.cert"
+        - "--tls-key=/var/tls/athenz/private/service.key"
+        volumeMounts:
+        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
+        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: true }
+        - { name: "ntoken", mountPath: "/tokens", readOnly: true }
+        - { name: "sign-public-dir", mountPath: "/var/keys/public", readOnly: true }
+

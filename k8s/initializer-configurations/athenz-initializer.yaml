@@ -1,0 +1,10 @@
+apiVersion: admissionregistration.k8s.io/v1alpha1
+kind: InitializerConfiguration
+metadata:
+  name: athenz-initializer
+initializers:
+  - name: athenz.initializer.kubernetes.io
+    rules:
+      - apiGroups: [ "*" ]
+        apiVersions: [ "*" ]
+        resources: [ "pods" ]

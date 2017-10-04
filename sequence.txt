@@ -1,0 +1,39 @@
+participant Admin as admin
+participant Kubernetes as k8s
+participant "Initializer" as init
+participant Athenz as zts
+participant Pod as pod
+participant "Provider\ncallback" as cb
+
+admin->zts: authorize k8s cluster\nto launch service
+admin->k8s: Provision ServiceAccount(sports-fe)
+admin->k8s: launchPod(images, ServiceAccount)
+
+init->init: watch for pods
+
+loop for each pod
+  init->init: Generate Identity doc (jwt)
+  init->init: Update spec: inject SIA init,\n refresh container\n with identity env vars, volume mounts
+  init->k8s: updated PodSpec
+end
+
+k8s->pod: Create Pod
+
+pod->pod: generate keypair, create CSR
+pod->zts: getIdentity(CSR, document)
+zts->cb: confirm signed identity document
+cb->cb: check signature, metadata
+cb->k8s: get pod
+k8s->cb: pod object
+cb->cb:verify attributes, IP
+
+cb-> zts: ok
+zts-> zts: mint cert(s)
+zts->pod: X.509 cert
+
+loop every 'x' hours
+  pod->zts: refresh request using previous cert
+  zts->zts: verify old cert,\nmint new certs
+  zts->pod: X.509 cert
+end
+

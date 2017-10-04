@@ -1,0 +1,29 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: mock-athenz
+  labels:
+    app: mock-athenz
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mock-athenz
+      name: mock-athenz
+    spec:
+      serviceAccountName: mock-athenz
+      volumes:
+      - { name: "root-ca", secret: { secretName: "mock-athenz-root-ca" } }
+
+      containers:
+      - name: main
+        image: local/k8s-mock-athenz:latest
+        imagePullPolicy: Never
+        args:
+        # - "--auth-header=Athenz-Principal-Auth"
+        - "--dns-suffix=example.cloud"
+        - "--root-ca-key=/var/athenz/root-ca/key"
+        - "--root-ca-cert=/var/athenz/root-ca/cert"
+        volumeMounts:
+        - { name: "root-ca", mountPath: "/var/athenz/root-ca", readOnly: true }
