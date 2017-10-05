@@ -46,7 +46,7 @@ type InstanceRefreshInformation struct {
 type InstanceIdentity struct {
 	Provider              string            `json:"provider"`
 	Name                  string            `json:"name"`
-	InstanceId            string            `json:"instanceId"`
+	InstanceID            string            `json:"instanceId"`
 	X509Certificate       string            `json:"x509Certificate,omitempty"`
 	X509CertificateSigner string            `json:"x509CertificateSigner,omitempty"`
 	ServiceToken          string            `json:"serviceToken,omitempty"`
@@ -191,7 +191,7 @@ func (z *zts) providerRegistration(w http.ResponseWriter, r *http.Request) {
 	z.doJSON(w, http.StatusCreated, &InstanceIdentity{
 		Provider:              in.Provider,
 		Name:                  in.Service + "." + strings.Replace(in.Domain, ".", "-", -1) + "." + z.dnsSuffix,
-		InstanceId:            "i1",
+		InstanceID:            "i1",
 		X509Certificate:       string(cert),
 		X509CertificateSigner: string(z.caCertPEM),
 		ServiceToken:          tok,
@@ -226,7 +226,7 @@ func (z *zts) providerRefresh(w http.ResponseWriter, r *http.Request, ri refresh
 	z.doJSON(w, http.StatusOK, &InstanceIdentity{
 		Provider:              ri.provider,
 		Name:                  ri.name + "." + strings.Replace(ri.domain, ".", "-", -1) + "." + z.dnsSuffix,
-		InstanceId:            "i1",
+		InstanceID:            "i1",
 		X509Certificate:       string(cert),
 		X509CertificateSigner: string(z.caKeyPEM),
 		ServiceToken:          tok,

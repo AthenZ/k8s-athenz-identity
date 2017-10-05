@@ -1,7 +1,7 @@
 Launch flow
 ===========
 
-![alt text](sequence.png)
+![sequence diagram](sequence.png)
 
 Actors
 ----

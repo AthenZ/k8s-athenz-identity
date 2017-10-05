@@ -12,7 +12,7 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-type Serializer func(pod *v1.Pod) (map[string]string, error)
+type serializer func(pod *v1.Pod) (map[string]string, error)
 
 type initConfig struct {
 	Name              string   `yaml:"name"`              // initializer name, must have at least 2 dots
@@ -32,10 +32,10 @@ func (ic *initConfig) assertValid() error {
 
 type initializer struct {
 	config     initConfig
-	serializer Serializer
+	serializer serializer
 }
 
-func newInitializer(config initConfig, serializer Serializer) (*initializer, error) {
+func newInitializer(config initConfig, serializer serializer) (*initializer, error) {
 	if err := config.assertValid(); err != nil {
 		return nil, err
 	}

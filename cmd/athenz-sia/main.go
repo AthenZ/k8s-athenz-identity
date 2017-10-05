@@ -46,13 +46,17 @@ func getPayload() (*identity.SIAPayload, error) {
 	return identity.PayloadFromEnvironment(envMap)
 }
 
+type artifacts struct {
+	tokenFile  string
+	keyFile    string
+	certFile   string
+	caCertFile string
+}
+
 type params struct {
 	zts          *ztsClient
+	artifacts    artifacts
 	instanceFile string
-	tokenFile    string
-	keyFile      string
-	certFile     string
-	caCertFile   string
 	init         bool
 	refresh      time.Duration
 	closers      []io.Closer
@@ -192,12 +196,14 @@ func parseFlags(program string, args []string) (*params, error) {
 	return &params{
 		zts:          client,
 		instanceFile: instanceFile,
-		tokenFile:    ntokenFile,
-		keyFile:      keyFile,
-		certFile:     certFile,
-		caCertFile:   caCertFile,
-		init:         mode == "init",
-		refresh:      ri,
+		artifacts: artifacts{
+			tokenFile:  ntokenFile,
+			keyFile:    keyFile,
+			certFile:   certFile,
+			caCertFile: caCertFile,
+		},
+		init:    mode == "init",
+		refresh: ri,
 	}, nil
 }
 
@@ -210,21 +216,22 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 
 	writeFiles := func(identity *zts.InstanceIdentity, keyPEM []byte, creds *refreshCredentials) error {
 		w := util.NewWriter()
-		if err := w.Add(params.certFile, []byte(identity.X509Certificate), 0644); err != nil {
+		a := params.artifacts
+		if err := w.Add(a.certFile, []byte(identity.X509Certificate), 0644); err != nil {
 			return err
 		}
-		if err := w.Add(params.keyFile, keyPEM, 0644); err != nil { // TODO: finalize perms and user
+		if err := w.Add(a.keyFile, keyPEM, 0644); err != nil { // TODO: finalize perms and user
 			return err
 		}
-		if params.caCertFile != "" {
-			if err := w.Add(params.caCertFile, []byte(identity.X509CertificateSigner), 0644); err != nil {
+		if a.caCertFile != "" {
+			if err := w.Add(a.caCertFile, []byte(identity.X509CertificateSigner), 0644); err != nil {
 				return err
 			}
 		}
 		if err := w.Add(params.instanceFile, []byte(creds.instanceID), 0644); err != nil {
 			return err
 		}
-		if err := w.Add(params.tokenFile, []byte(identity.ServiceToken), 0644); err != nil {
+		if err := w.Add(a.tokenFile, []byte(identity.ServiceToken), 0644); err != nil {
 			return err
 		}
 		return w.Save()
@@ -243,11 +250,11 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
-	certBytes, err := ioutil.ReadFile(params.certFile)
+	certBytes, err := ioutil.ReadFile(params.artifacts.certFile)
 	if err != nil {
 		return err
 	}
-	keyBytes, err := ioutil.ReadFile(params.keyFile)
+	keyBytes, err := ioutil.ReadFile(params.artifacts.keyFile)
 	if err != nil {
 		return err
 	}
