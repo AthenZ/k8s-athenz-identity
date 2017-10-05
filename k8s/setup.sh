@@ -3,6 +3,7 @@
 set -e
 
 NS=kube-system
+UNS=default
 
 # first create the mock-athenz service so we can get the cluster IP
 
@@ -72,5 +73,6 @@ kubectl --namespace=${NS} apply -f deployments/athenz-callback.yaml
 kubectl --namespace=${NS} apply -f services/athenz-callback.yaml
 kubectl --namespace=${NS} apply -f initializer-configurations/athenz-initializer.yaml
 
-kubectl apply -f pods/test-app-pod.yaml
+kubectl --namespace=${UNS} apply -f app/service-account.yaml
+kubectl --namespace=${UNS} apply -f app/test-app-pod.yaml
 

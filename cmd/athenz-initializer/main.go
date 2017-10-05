@@ -79,6 +79,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		configMap       = envOrDefault("ATHENZ_INIT_CONFIG_MAP", "athenz-initializer")
 		keyDir          = envOrDefault("ATHENZ_INIT_PRIVATE_KEYS_DIR", "/var/keys/private")
 		dnsSuffix       = envOrDefault("ATHENZ_INIT_DNS_SUFFIX", "")
+		adminDomain     = envOrDefault("ATHENZ_INIT_ADMIN_DOMAIN", "k8s.admin")
 		resyncInterval  = envOrDefault("ATHENS_INIT_RESYNC_INTERVAL", "60s")
 	)
 
@@ -88,6 +89,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	f.StringVar(&namespace, "namespace", namespace, "The configuration namespace")
 	f.StringVar(&configMap, "configmap", configMap, "The athenz initializer configuration configmap")
 	f.StringVar(&keyDir, "sign-key-dir", keyDir, "directory containing private signing keys")
+	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
 	f.StringVar(&resyncInterval, "sync-interval", resyncInterval, "watcher re-sync interval")
 
 	var showVersion bool
@@ -144,8 +146,9 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, err
 	}
 
+	a := common.Attributes{AdminDomain: adminDomain}
 	initer, err := newInitializer(*initConfig, func(pod *v1.Pod) (map[string]string, error) {
-		attrs, err := common.Pod2Attributes(pod)
+		attrs, err := a.Pod2Attributes(pod)
 		if err != nil {
 			return nil, err
 		}

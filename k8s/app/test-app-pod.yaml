@@ -2,15 +2,13 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: athenz-test-app
-  namespace: default
   annotations:
     initializer.kubernetes.io/athenz: "true"
-    athenz/domain: default
-    athenz/service: k8s-test-app
   labels:
     app: athenz-test-app
 
 spec:
+  serviceAccountName: k8s-test-app
   containers:
   - name: main
     image: local/k8s-athenz-test-app:latest

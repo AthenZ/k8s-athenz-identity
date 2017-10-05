@@ -66,6 +66,7 @@ func envOrDefault(name string, defaultValue string) string {
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
 		addr          = envOrDefault("ATHENZ_CB_LISTEN_ADDR", ":4443")
+		adminDomain   = envOrDefault("ATHENZ_CB_ADMIN_DOMAIN", "k8s.admin")
 		keyFile       = envOrDefault("ATHENZ_CB_KEY_FILE", "/var/tls/athenz/private/service.key")
 		certFile      = envOrDefault("ATHENZ_CB_CERT_FILE", "/var/tls/athenz/public/service.cert")
 		caCertFile    = envOrDefault("ATHENZ_CB_CA_CERT_FILE", "")
@@ -79,6 +80,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	f.StringVar(&certFile, "tls-cert", certFile, "path to TLS cert")
 	f.StringVar(&caCertFile, "ca-cert", caCertFile, "path to CA cert")
 	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
+	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 
 	var showVersion bool
@@ -115,6 +117,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	}
 
 	publicSource := keys.NewPublicKeySource(publicKeyDir, common.AthensInitSecret)
+	a := &common.Attributes{AdminDomain: adminDomain}
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodAttributes, error) {
 			parts := strings.SplitN(podID, "/", 2)
@@ -125,7 +128,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 			if err != nil {
 				return nil, err
 			}
-			return common.Pod2Attributes(pod)
+			return a.Pod2Attributes(pod)
 		},
 		PublicKeyProvider: publicSource.PublicKey,
 	})

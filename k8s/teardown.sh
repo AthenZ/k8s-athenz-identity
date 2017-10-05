@@ -1,8 +1,10 @@
 #!/bin/bash
 
 NS=kube-system
+UNS=default
 
-kubectl --namespace=default delete -f pods/test-app-pod.yaml
+kubectl --namespace=${UNS} delete -f app/test-app-pod.yaml
+kubectl --namespace=${UNS} delete -f app/service-account.yaml
 
 kubectl --namespace=${NS} delete -f initializer-configurations/athenz-initializer.yaml
 
