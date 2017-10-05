@@ -7,9 +7,14 @@ import (
 	"net/http"
 	"strings"
 
+	"fmt"
+	"io/ioutil"
+
 	"github.com/dimfeld/httptreemux"
+	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"go.corp.yahoo.com/clusterville/log"
 )
 
 type InstanceRefreshRequest struct {
@@ -102,9 +107,22 @@ func (z *zts) createCreds(domain, service string, csr []byte) (string, []byte, e
 	return tok, out, nil
 }
 
+func (z *zts) decode(r *http.Request, data interface{}) error {
+	b, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("body read error for %s %v", r.Method, r.URL))
+	}
+	log.Printf("body for %s %v,\n%s\n", r.Method, r.URL, b)
+	err = json.Unmarshal(b, data)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("JSON unmarshal error for %s", b))
+	}
+	return nil
+}
+
 func (z *zts) getInstanceRefreshRequest(r *http.Request) (*InstanceRefreshRequest, error) {
 	var in InstanceRefreshRequest
-	err := json.NewDecoder(r.Body).Decode(&in)
+	err := z.decode(r, &in)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +161,7 @@ func (z *zts) credentialsForKeyOwner(w http.ResponseWriter, r *http.Request, s s
 
 func (z *zts) getInstanceRegisterInfo(r *http.Request) (*InstanceRegisterInformation, error) {
 	var in InstanceRegisterInformation
-	err := json.NewDecoder(r.Body).Decode(&in)
+	err := z.decode(r, &in)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +200,7 @@ func (z *zts) providerRegistration(w http.ResponseWriter, r *http.Request) {
 
 func (z *zts) getInstanceRefreshInfo(r *http.Request) (*InstanceRefreshRequest, error) {
 	var in InstanceRefreshRequest
-	err := json.NewDecoder(r.Body).Decode(&in)
+	err := z.decode(r, &in)
 	if err != nil {
 		return nil, err
 	}

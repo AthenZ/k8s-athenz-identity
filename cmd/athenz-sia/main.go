@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -72,12 +73,63 @@ func envOrDefault(name string, defaultValue string) string {
 	return v
 }
 
+func getPodIP() (net.IP, error) {
+	xfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("unable to get network interfaces, %v", err)
+	}
+	for _, x := range xfaces {
+		if x.Flags&net.FlagLoopback > 0 { // loopback, ignore
+			continue
+		}
+		if x.Flags&net.FlagUp == 0 { // not up
+			continue
+		}
+		addrs, err := x.Addrs()
+		if err != nil {
+			log.Printf("unable to get addresses for interface %v, %v", x, err)
+			continue
+		}
+		for _, a := range addrs {
+			as := a.String()
+			ip, _, err := net.ParseCIDR(as)
+			if err != nil {
+				log.Printf("unable to parse address %s for interface %v, %v", as, x, err)
+				continue
+			}
+			if ip.To4() == nil {
+				continue
+			}
+			return ip, nil
+		}
+	}
+	return nil, fmt.Errorf("unable to get pod IP from any interface")
+}
+
+func getSANIPs(override string) ([]net.IP, error) {
+	var ip net.IP
+	var err error
+	if override != "" {
+		ip = net.ParseIP(override)
+		if ip == nil {
+			return nil, fmt.Errorf("unable to parse override IP %q", override)
+		}
+	} else {
+		ip, err = getPodIP()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return []net.IP{ip}, nil
+}
+
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
 		endpoint        = envOrDefault("SIA_ZTS_ENDPOINT", "")
 		authHeader      = envOrDefault("SIA_AUTH_HEADER", "Athenz-Principal-Auth")
 		refreshInterval = envOrDefault("SIA_REFRESH_INTERVAL", "1h")
+		podIP           = envOrDefault("SIA_POD_IP", "")
 		ntokenFile      = envOrDefault("SIA_OUT_TOKEN_FILE", "/tokens/ntoken")
 		keyFile         = envOrDefault("SIA_OUT_KEY_FILE", "/var/tls/athenz/service.key")
 		certFile        = envOrDefault("SIA_OUT_CERT_FILE", "/var/tls/athenz/service.cert")
@@ -87,6 +139,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
 	f.StringVar(&endpoint, "endpoint", endpoint, "ZTS endpoint with /v1 path, required")
+	f.StringVar(&podIP, "pod-ip", podIP, "use pod IP passed in for certificate, default is current IP")
 	f.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
 	f.StringVar(&refreshInterval, "refresh-interval", refreshInterval, "cert refresh interval")
 	f.StringVar(&ntokenFile, "ntoken-file", ntokenFile, "ntoken file to write")
@@ -130,7 +183,12 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, err
 	}
 
-	client := newZTS(endpoint, payload)
+	ips, err := getSANIPs(podIP)
+	if err != nil {
+		return nil, err
+	}
+
+	client := newZTS(endpoint, payload, ips)
 	return &params{
 		zts:          client,
 		instanceFile: instanceFile,

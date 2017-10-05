@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/yahoo/athenz/clients/go/zts"
@@ -14,12 +15,14 @@ var wantToken = true
 
 type ztsClient struct {
 	endpoint string
+	sanIPs   []net.IP
 	payload  *identity.SIAPayload
 }
 
-func newZTS(endpoint string, payload *identity.SIAPayload) *ztsClient {
+func newZTS(endpoint string, payload *identity.SIAPayload, sanIPs []net.IP) *ztsClient {
 	return &ztsClient{
 		endpoint: endpoint,
+		sanIPs:   sanIPs,
 		payload:  payload,
 	}
 }
@@ -28,7 +31,7 @@ func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
 	payload := z.payload
 	return util.GenerateKeyAndCSR(fmt.Sprintf("%s.%s", payload.Domain, payload.Service), util.CSROptions{
 		DNSNames:    payload.SANNames,
-		IPAddresses: nil, // TODO: fix this
+		IPAddresses: z.sanIPs,
 	})
 }
 
