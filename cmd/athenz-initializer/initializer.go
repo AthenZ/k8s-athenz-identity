@@ -125,10 +125,10 @@ func (i *initializer) Update(pod *v1.Pod) error {
 	if err != nil {
 		return err
 	}
+	// only set up the env vars for the init container
 	for k, v := range env {
 		e := v1.EnvVar{Name: k, Value: v}
 		siaInitContainer.Env = append(siaInitContainer.Env, e)
-		siaRefreshContainer.Env = append(siaRefreshContainer.Env, e)
 	}
 
 	pod.Spec.InitContainers = append([]v1.Container{siaInitContainer}, pod.Spec.InitContainers...)

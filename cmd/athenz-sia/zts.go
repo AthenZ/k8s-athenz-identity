@@ -16,89 +16,81 @@ var wantToken = true
 type ztsClient struct {
 	endpoint string
 	sanIPs   []net.IP
-	payload  *identity.SIAPayload
+	context  identity.Context
 }
 
-func newZTS(endpoint string, payload *identity.SIAPayload, sanIPs []net.IP) *ztsClient {
+func newZTS(endpoint string, context identity.Context, sanIPs []net.IP) *ztsClient {
 	return &ztsClient{
 		endpoint: endpoint,
 		sanIPs:   sanIPs,
-		payload:  payload,
+		context:  context,
 	}
 }
 
 func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
-	payload := z.payload
-	return util.GenerateKeyAndCSR(fmt.Sprintf("%s.%s", payload.Domain, payload.Service), util.CSROptions{
-		DNSNames:    payload.SANNames,
+	ctx := z.context
+	return util.GenerateKeyAndCSR(fmt.Sprintf("%s.%s", ctx.Domain, ctx.Service), util.CSROptions{
+		DNSNames:    ctx.SANNames,
 		IPAddresses: z.sanIPs,
 	})
 }
 
-type refreshCredentials struct {
-	instanceID string
-	cert       tls.Certificate
-}
-
-func (z *ztsClient) identity2Creds(identity *zts.InstanceIdentity, keyPEM []byte) (*refreshCredentials, error) {
+func (z *ztsClient) identity2Creds(identity *zts.InstanceIdentity, keyPEM []byte) (*tls.Certificate, error) {
 	cert, err := tls.X509KeyPair([]byte(identity.X509Certificate), keyPEM)
 	if err != nil {
 		return nil, err
 	}
-	return &refreshCredentials{
-		instanceID: string(identity.InstanceId),
-		cert:       cert,
-	}, nil
+	return &cert, nil
 
 }
 
-func (z *ztsClient) getIdentity() (*zts.InstanceIdentity, []byte, *refreshCredentials, error) {
-	handle := func(err error) (*zts.InstanceIdentity, []byte, *refreshCredentials, error) {
+func (z *ztsClient) getIdentity(identityDoc string) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
+	handle := func(err error) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
 		return nil, nil, nil, err
 	}
-	payload := z.payload
+	ctx := z.context
 	keyPEM, csrPEM, err := z.generateKeyAndCSR()
 	if err != nil {
 		return handle(err)
 	}
 	client := zts.NewClient(z.endpoint, nil)
-	identity, _, err := client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
-		Provider:        zts.ServiceName(payload.ProviderService),
-		Domain:          zts.DomainName(payload.Domain),
-		Service:         zts.SimpleName(payload.Service),
-		AttestationData: payload.IdentityDoc,
+	id, _, err := client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
+		Provider:        zts.ServiceName(ctx.ProviderService),
+		Domain:          zts.DomainName(ctx.Domain),
+		Service:         zts.SimpleName(ctx.Service),
+		AttestationData: identityDoc,
 		Csr:             string(csrPEM),
 		Token:           &wantToken,
 	})
 	if err != nil {
 		return handle(err)
 	}
-	creds, err := z.identity2Creds(identity, keyPEM)
+	cert, err := z.identity2Creds(id, keyPEM)
 	if err != nil {
 		return handle(err)
 	}
-	return identity, keyPEM, creds, err
+	return id, keyPEM, cert, err
 }
 
-func (z *ztsClient) refreshIdentity(creds *refreshCredentials) (*zts.InstanceIdentity, []byte, *refreshCredentials, error) {
-	handle := func(err error) (*zts.InstanceIdentity, []byte, *refreshCredentials, error) {
+func (z *ztsClient) refreshIdentity(cert *tls.Certificate) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
+	handle := func(err error) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
 		return nil, nil, nil, err
 	}
 	client := zts.NewClient(z.endpoint, &http.Transport{
 		TLSClientConfig: &tls.Config{
-			Certificates: []tls.Certificate{creds.cert},
+			Certificates: []tls.Certificate{*cert},
 		},
 	})
-	payload := z.payload
+	ctx := z.context
 	keyPEM, csrPEM, err := z.generateKeyAndCSR()
 	if err != nil {
 		return handle(err)
 	}
-	identity, err := client.PostInstanceRefreshInformation(
-		zts.ServiceName(payload.ProviderService),
-		zts.DomainName(payload.Domain),
-		zts.SimpleName(payload.Service),
-		zts.PathElement(creds.instanceID),
+	id, err := client.PostInstanceRefreshInformation(
+		zts.ServiceName(ctx.ProviderService),
+		zts.DomainName(ctx.Domain),
+		zts.SimpleName(ctx.Service),
+		zts.PathElement(ctx.InstanceID),
 		&zts.InstanceRefreshInformation{
 			Csr:   string(csrPEM),
 			Token: &wantToken,
@@ -106,9 +98,9 @@ func (z *ztsClient) refreshIdentity(creds *refreshCredentials) (*zts.InstanceIde
 	if err != nil {
 		return handle(err)
 	}
-	newCreds, err := z.identity2Creds(identity, keyPEM)
+	newCreds, err := z.identity2Creds(id, keyPEM)
 	if err != nil {
 		return handle(err)
 	}
-	return identity, keyPEM, newCreds, err
+	return id, keyPEM, newCreds, err
 }

@@ -38,9 +38,10 @@ type Context struct {
 	Service         string   // Athenz service name
 	ProviderService string   // provider service name
 	SANNames        []string // SAN names to be registered for the TLS cert
+	InstanceID      string   // instance id returned by Athenz after initial call
 }
 
-func (c *Context) assertValid() error {
+func (c *Context) AssertValid() error {
 	return util.CheckFields("SIA context", map[string]bool{
 		"Domain":          c.Domain == "",
 		"Service":         c.Service == "",
@@ -57,7 +58,7 @@ type SIAPayload struct {
 }
 
 func (s *SIAPayload) assertValid() error {
-	err := s.Context.assertValid()
+	err := s.Context.AssertValid()
 	if err != nil {
 		return err
 	}

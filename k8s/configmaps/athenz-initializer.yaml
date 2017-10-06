@@ -11,23 +11,25 @@ data:
         image: local/k8s-athenz-sia:latest
         imagePullPolicy: Never
         command: ["/usr/bin/athenz-sia"]
-        args: [ "--mode=init", "--endpoint=http://mock-athenz.kube-system/zts/v1" ]
+        args: [ "--mode=init", "--endpoint=http://mock-athenz.kube-system/zts/v1", "--state-file=/var/sia/state/state.json" ]
         resources:
           limits:   { cpu: "1000m", memory: "512Mi" }
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
         - { name: ntoken,    mountPath: /tokens }
         - { name: tlscerts,  mountPath: /var/tls/athenz }
+        - { name: state,     mountPath: /var/sia/state }
 
     refreshTemplate: |
         name: sia-refresh
         image: local/k8s-athenz-sia:latest
         imagePullPolicy: Never
         command: ["/usr/bin/athenz-sia"]
-        args: [ "--mode=refresh", "--endpoint=http://mock-athenz.kube-system/zts/v1" ]
+        args: [ "--mode=refresh", "--endpoint=http://mock-athenz.kube-system/zts/v1", "--state-file=/var/sia/state/state.json" ]
         resources:
           limits:   { cpu: "1000m", memory: "512Mi" }
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
         - { name: ntoken,    mountPath: /tokens }
         - { name: tlscerts,  mountPath: /var/tls/athenz }
+        - { name: state,     mountPath: /var/sia/state, readOnly: true }

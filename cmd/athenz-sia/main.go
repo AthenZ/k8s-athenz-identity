@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -54,12 +55,13 @@ type artifacts struct {
 }
 
 type params struct {
-	zts          *ztsClient
-	artifacts    artifacts
-	instanceFile string
-	init         bool
-	refresh      time.Duration
-	closers      []io.Closer
+	endpoint  string
+	ips       []net.IP
+	init      bool
+	stateFile string
+	artifacts artifacts
+	refresh   time.Duration
+	closers   []io.Closer
 }
 
 func (p *params) Close() error {
@@ -134,6 +136,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		authHeader      = envOrDefault("SIA_AUTH_HEADER", "Athenz-Principal-Auth")
 		refreshInterval = envOrDefault("SIA_REFRESH_INTERVAL", "1h")
 		podIP           = envOrDefault("SIA_POD_IP", "")
+		stateFile       = envOrDefault("SIA_STATE_FILE", "/tmp/sia-state.json")
 		ntokenFile      = envOrDefault("SIA_OUT_TOKEN_FILE", "/tokens/ntoken")
 		keyFile         = envOrDefault("SIA_OUT_KEY_FILE", "/var/tls/athenz/service.key")
 		certFile        = envOrDefault("SIA_OUT_CERT_FILE", "/var/tls/athenz/service.cert")
@@ -146,6 +149,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&podIP, "pod-ip", podIP, "use pod IP passed in for certificate, default is current IP")
 	f.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
 	f.StringVar(&refreshInterval, "refresh-interval", refreshInterval, "cert refresh interval")
+	f.StringVar(&stateFile, "state-file", stateFile, "state file to write for refresh context")
 	f.StringVar(&ntokenFile, "ntoken-file", ntokenFile, "ntoken file to write")
 	f.StringVar(&certFile, "cert-file", certFile, "cert file to write")
 	f.StringVar(&caCertFile, "ca-cert-file", caCertFile, "CA cert file to write")
@@ -182,20 +186,15 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid refresh interval %q, %v", refreshInterval, err)
 	}
 
-	payload, err := getPayload()
-	if err != nil {
-		return nil, err
-	}
-
 	ips, err := getSANIPs(podIP)
 	if err != nil {
 		return nil, err
 	}
 
-	client := newZTS(endpoint, payload, ips)
 	return &params{
-		zts:          client,
-		instanceFile: instanceFile,
+		endpoint:  endpoint,
+		ips:       ips,
+		stateFile: stateFile,
 		artifacts: artifacts{
 			tokenFile:  ntokenFile,
 			keyFile:    keyFile,
@@ -214,7 +213,7 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 	}
 	defer params.Close()
 
-	writeFiles := func(identity *zts.InstanceIdentity, keyPEM []byte, creds *refreshCredentials) error {
+	writeFiles := func(identity *zts.InstanceIdentity, keyPEM []byte, cert *tls.Certificate) error {
 		w := util.NewWriter()
 		a := params.artifacts
 		if err := w.Add(a.certFile, []byte(identity.X509Certificate), 0644); err != nil {
@@ -228,27 +227,58 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 				return err
 			}
 		}
-		if err := w.Add(params.instanceFile, []byte(creds.instanceID), 0644); err != nil {
-			return err
-		}
 		if err := w.Add(a.tokenFile, []byte(identity.ServiceToken), 0644); err != nil {
 			return err
 		}
 		return w.Save()
 	}
 
-	if params.init {
-		id, key, creds, err := params.zts.getIdentity()
+	writeStateFile := func(c identity.Context) error {
+		b, err := json.Marshal(c)
 		if err != nil {
 			return err
 		}
-		return writeFiles(id, key, creds)
+		return ioutil.WriteFile(params.stateFile, b, 0644)
 	}
 
-	// recreate refresh credentials state from files written to the filesystem
-	instanceBytes, err := ioutil.ReadFile(params.instanceFile)
+	readStateFile := func() (identity.Context, error) {
+		var c identity.Context
+		b, err := ioutil.ReadFile(params.stateFile)
+		if err != nil {
+			return c, err
+		}
+		if err := json.Unmarshal(b, &c); err != nil {
+			return c, err
+		}
+		if err := c.AssertValid(); err != nil {
+			return c, fmt.Errorf("bad context in state file, %v", err)
+		}
+		if c.InstanceID == "" {
+			return c, fmt.Errorf("context did not have an instance ID")
+		}
+		return c, nil
+	}
+
+	if params.init {
+		payload, err := getPayload()
+		if err != nil {
+			return err
+		}
+		z := newZTS(params.endpoint, payload.Context, params.ips)
+		id, key, cert, err := z.getIdentity(payload.IdentityDoc)
+		if err != nil {
+			return err
+		}
+		payload.Context.InstanceID = string(id.InstanceId)
+		if err := writeStateFile(payload.Context); err != nil {
+			return err
+		}
+		return writeFiles(id, key, cert)
+	}
+
+	context, err := readStateFile()
 	if err != nil {
-		return err
+		return fmt.Errorf("readStateFile: %v", err)
 	}
 	certBytes, err := ioutil.ReadFile(params.artifacts.certFile)
 	if err != nil {
@@ -263,18 +293,14 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 		return err
 	}
 
-	creds := &refreshCredentials{
-		instanceID: string(instanceBytes),
-		cert:       cert,
-	}
-
+	z := newZTS(params.endpoint, context, params.ips)
 	refresh := func() error {
-		id, key, newCreds, err := params.zts.refreshIdentity(creds)
+		id, key, newCert, err := z.refreshIdentity(&cert)
 		if err != nil {
 			return err
 		}
-		creds = newCreds
-		return writeFiles(id, key, creds)
+		cert = *newCert
+		return writeFiles(id, key, newCert)
 	}
 
 	t := time.NewTicker(params.refresh)
