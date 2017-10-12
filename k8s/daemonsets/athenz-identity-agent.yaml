@@ -34,11 +34,11 @@ spec:
         - "--listen=unix:///var/athenz/agent/agent.sock"
         - "--pod-endpoint=http://${NODE_NAME}:10255"
         volumeMounts:
-        - { name: config-volume, mountPath: /var/cluster, readOnly: true}
-        - { name: "driver-dir", mountPath: "/driver-mount" }
-        - { name: "agent-dir", mountPath: "/var/athenz/agent" }
-        - { name: "volume-source", mountPath: "/var/athenz/driver"  }
-        - { name: "identity-dir", mountPath: "/var/athenz/node/identity", readOnly: true }
+        - { name: config-volume,  mountPath: /var/cluster, readOnly: true}
+        - { name: driver-dir,     mountPath: /driver-mount }
+        - { name: agent-dir,      mountPath: /var/athenz/agent }
+        - { name: volume-source,  mountPath: /var/athenz/driver  }
+        - { name: identity-dir,   mountPath: /var/athenz/node/identity, readOnly: true }
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:

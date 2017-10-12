@@ -15,7 +15,6 @@ spec:
       serviceAccountName: athenz-callback
       volumes:
       - { name: config-volume, configMap: { name: athenz-config } }
-      - { name: zts-config-volume, configMap: { name: mock-zts-config } }
       - { name: sign-public-dir, secret: { secretName: athenz-signing-public } }
       - { name: service-identity-dir, secret: { secretName: athenz-callback-identity } }
       - { name: tlscerts, emptyDir: {} }
@@ -70,7 +69,6 @@ spec:
         - "--zts-name=Athenz"
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
-        - { name: zts-config-volume, mountPath: /var/zts, readOnly: true}
         - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
         - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: true }
         - { name: ntoken, mountPath: /tokens, readOnly: true }

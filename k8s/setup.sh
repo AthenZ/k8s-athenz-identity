@@ -15,35 +15,26 @@ UNS=user-apps
 section "Setup base paths on node"
 
 # This stuff is not yet configurable, must be the correct paths
-
-if [[ -d /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver/ ]]
-then
-    sudo mkdir -p /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver/
-fi
-if [[ ! -d /var/athenz/agent ]]
-then
-    sudo mkdir -p /var/athenz/agent
-fi
-if [[ ! -d /var/athenz/driver ]]
-then
-    sudo mkdir -p /var/athenz/driver
-fi
-if [[ ! -d /var/athenz/node/identity ]]
-then
-    sudo mkdir -p /var/athenz/node/identity
-fi
+for dir in   /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver/  \
+             /var/athenz/agent \
+             /var/athenz/driver \
+             /var/athenz/node/identity
+do
+    if [[ ! -d $dir ]]
+    then
+        sudo mkdir -p $dir
+    fi
+done
 
 section "Create namespaces"
 kubectl apply -f namespaces/k8s-admin.yaml
 kubectl apply -f namespaces/user-apps.yaml
 
 section "Setup RBAC"
-
-# setup RBAC
 kubectl --namespace=${NS} apply -f rbac-admin.yaml
 kubectl --namespace=${SNS} apply -f rbac.yaml
 
-section "Setup mock-athenz"
+section "Setup mock-athenz config"
 
 # first create the mock-athenz service so we can get the cluster IP
 kubectl --namespace=${NS} apply -f services/mock-athenz.yaml
@@ -51,6 +42,8 @@ kubectl --namespace=${NS} apply -f services/mock-athenz.yaml
 mock_athenz_service=mock-athenz.${NS}.svc.cluster.local
 mock_athenz_ip=$(kubectl --namespace=${NS} get service mock-athenz -o jsonpath='{.spec.clusterIP}')
 mock_athenz_url="https://${mock_athenz_ip}"
+
+section Setup keys and secrets
 
 # create a specific root CA for the Athenz service itself, distinct from the root CA for workloads
 if [[ ! -f athenz-ca.pem ]]
@@ -112,12 +105,6 @@ EOF
         --from-literal="cert=`cat athenz-root-ca.pub.pem`"
 fi
 
-kubectl --namespace=${NS} apply -f deployments/mock-athenz.yaml
-
-section Setup athenz config map
-athenz-write-config --zts-endpoint=https://${mock_athenz_ip}:4443/zts/v1 >/tmp/cluster.yaml
-athenz-write-config --wrap | kubectl --namespace=${NS} apply -f -
-
 section "Create signing keys"
 if [[ ! -f signing.pem ]]
 then
@@ -126,6 +113,31 @@ then
     kubectl --namespace=${NS} create secret generic athenz-signing-public --from-literal="signing.v1=`cat signing.pub.pem`"
     kubectl --namespace=${NS} create secret generic athenz-signing-private --from-literal="signing.v1=`cat signing.pem`"
 fi
+
+section "Create JWT keys"
+if [[ ! -f jwt-service.pem ]]
+then
+    openssl genrsa -out jwt-service.pem 2048
+    openssl rsa -in jwt-service.pem -outform PEM -pubout -out jwt-service.pub.pem
+    kubectl --namespace=${NS} create secret generic athenz-jwt-service-identity --from-literal="service.key=`cat jwt-service.pem`" --from-literal="service.version=v1"
+fi
+
+section "Create callback keys"
+if [[ ! -f athenz-callback.pem ]]
+then
+    openssl genrsa -out athenz-callback.pem 2048
+    openssl rsa -in athenz-callback.pem -outform PEM -pubout -out athenz-callback.pub.pem
+    kubectl --namespace=${NS} create secret generic athenz-callback-identity --from-literal="service.key=`cat athenz-callback.pem`" --from-literal="service.version=v1"
+fi
+
+
+section Setup athenz config map
+athenz-write-config --zts-endpoint=https://${mock_athenz_ip}:4443/zts/v1 >/tmp/cluster.yaml
+athenz-write-config --wrap | kubectl --namespace=${NS} apply -f -
+
+section Setup mock athenz deploy
+athenz-write-zts-config | kubectl --namespace=${NS} apply -f -
+kubectl --namespace=${NS} apply -f deployments/mock-athenz.yaml
 
 section "Setup node keys using athenz-control-sia"
 echo "****" This can fail if basic services are not yet up. Just re-run the script if this happens "****"
@@ -138,23 +150,12 @@ then
     athenz-control-sia --mode=init --identity-dir=./node-keys \
         --namespace=k8s-admin --account=k8s-node --config /tmp/cluster.yaml \
         --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert
-    sudo cp node-keys/service.key /var/athenz/node/identity/service.key
-    sudo cp node-keys/service.cert /var/athenz/node/identity/service.cert
-    sudo cp node-keys/ca.cert /var/athenz/node/identity/ca.cert
+    sudo cp node-keys/service.key node-keys/service.cert node-keys/ca.cert /var/athenz/node/identity/
 fi
 
 section "Setup JWT service"
 
 kubectl --namespace=${NS} apply -f services/athenz-jwt-service.yaml
-
-# create jwt-service identity
-if [[ ! -f jwt-service.pem ]]
-then
-    openssl genrsa -out jwt-service.pem 2048
-    openssl rsa -in jwt-service.pem -outform PEM -pubout -out jwt-service.pub.pem
-    kubectl --namespace=${NS} create secret generic athenz-jwt-service-identity --from-literal="service.key=`cat jwt-service.pem`" --from-literal="service.version=v1"
-fi
-
 kubectl --namespace=${NS} apply -f deployments/athenz-jwt-service.yaml
 
 section "Setup identity agent"
@@ -163,15 +164,6 @@ kubectl --namespace=${NS} apply -f daemonsets/athenz-identity-agent.yaml
 section "Setup athenz callback"
 
 kubectl --namespace=${NS} apply -f services/athenz-callback.yaml
-
-if [[ ! -f athenz-callback.pem ]]
-then
-    openssl genrsa -out athenz-callback.pem 2048
-    openssl rsa -in athenz-callback.pem -outform PEM -pubout -out athenz-callback.pub.pem
-    kubectl --namespace=${NS} create secret generic athenz-callback-identity --from-literal="service.key=`cat athenz-callback.pem`" --from-literal="service.version=v1"
-fi
-
-athenz-write-zts-config | kubectl --namespace=${NS} apply -f -
 kubectl --namespace=${NS} apply -f deployments/athenz-callback.yaml
 
 
