@@ -114,11 +114,9 @@ fi
 
 kubectl --namespace=${SNS} apply -f deployments/mock-athenz.yaml
 
-section Setup athenz-config
-athenz-write-config | kubectl --namespace=${SNS} apply -f -
-
-kubectl --namespace=${SNS} apply -f services/athenz-config.yaml
-kubectl --namespace=${SNS} apply -f deployments/athenz-config.yaml
+section Setup athenz config map
+athenz-write-config >/tmp/cluster.yaml
+athenz-write-config --wrap | kubectl --namespace=${NS} apply -f -
 
 section "Create signing keys"
 if [[ ! -f signing.pem ]]
@@ -131,7 +129,6 @@ fi
 
 section "Setup node keys using athenz-control-sia"
 echo "****" This can fail if basic services are not yet up. Just re-run the script if this happens "****"
-athenz_config_ip=$(kubectl --namespace=${SNS} get service athenz-config -o jsonpath='{.spec.clusterIP}')
 
 if [[ ! -f node-keys/service.cert ]]
 then
@@ -141,7 +138,7 @@ then
     athenz-control-sia --mode=init --dns-suffix=example.cloud  \
         --namespace=k8s-admin --account=k8s-node --endpoint https://${mock_athenz_ip}/zts/v1 \
         --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert \
-        --identity-dir=./node-keys/ --config http://${athenz_config_ip}/v1
+        --identity-dir=./node-keys/ --config /tmp/cluster.yaml
     sudo cp node-keys/service.key /var/athenz/node/identity/service.key
     sudo cp node-keys/service.cert /var/athenz/node/identity/service.cert
     sudo cp node-keys/ca.cert /var/athenz/node/identity/ca.cert

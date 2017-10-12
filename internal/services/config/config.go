@@ -110,25 +110,18 @@ func (c *ClusterConfiguration) KubeDNSToDomainService(k8sDNSNameOrURL string) (s
 	return c.NamespaceToDomain(actual[1]), actual[0], nil
 }
 
-func Load(fileOrUrl string) (*ClusterConfiguration, error) {
-	if strings.HasPrefix(fileOrUrl, "http://") {
-		return NewClient(fileOrUrl, nil).Config()
-	}
-	b, err := ioutil.ReadFile(fileOrUrl)
-	if err != nil {
-		return nil, err
-	}
-	var c ClusterConfiguration
-	if err := yaml.Unmarshal(b, &c); err != nil {
-		return nil, err
-	}
-	return &c, nil
-}
-
 func CmdLine(f *flag.FlagSet) func() (*ClusterConfiguration, error) {
-	configURL := util.EnvOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
-	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
+	file := util.EnvOrDefault("CONFIG_URL", "/var/cluster/config.yaml")
+	f.StringVar(&file, "config", file, "cluster config file path")
 	return func() (*ClusterConfiguration, error) {
-		return Load(configURL)
+		b, err := ioutil.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		var c ClusterConfiguration
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			return nil, err
+		}
+		return &c, nil
 	}
 }

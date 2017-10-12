@@ -19,7 +19,9 @@ func main() {
 		adminDomain     = "k8s.admin"
 		athenzRootFile  = "athenz-ca.pub.pem"
 		serviceRootFile = "athenz-root-ca.pub.pem"
+		wrap            = false
 	)
+	flag.BoolVar(&wrap, "wrap", wrap, "wrap config in config map")
 	flag.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "Athens DNS suffix")
 	flag.StringVar(&k8sSuffix, "k8s-dns-suffix", k8sSuffix, "K8s DNS suffix")
 	flag.StringVar(&adminDomain, "admin-domain", adminDomain, "admin/ cluster domain")
@@ -49,22 +51,23 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	cm := v1.ConfigMap{
-		TypeMeta: meta_v1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: meta_v1.ObjectMeta{
-			Name: "athenz-config",
-		},
-		Data: map[string]string{
-			"config.yaml": string(b),
-		},
-	}
-	b, err = yaml.Marshal(cm)
-	if err != nil {
-		log.Fatalln(err)
+	if wrap {
+		cm := v1.ConfigMap{
+			TypeMeta: meta_v1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: "v1",
+			},
+			ObjectMeta: meta_v1.ObjectMeta{
+				Name: "athenz-config",
+			},
+			Data: map[string]string{
+				"config.yaml": string(b),
+			},
+		}
+		b, err = yaml.Marshal(cm)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 	os.Stdout.Write(b)
 	os.Stdout.Write([]byte{'\n'})

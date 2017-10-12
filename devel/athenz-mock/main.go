@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -37,7 +35,8 @@ func getVersion() string {
 type params struct {
 	addr          string
 	caAddr        string
-	tls           *tls.Config
+	keyFile       string
+	certFile      string
 	handler       http.Handler
 	shutdownGrace time.Duration
 	closers       []io.Closer
@@ -61,7 +60,6 @@ func parseFlags(program string, args []string) (*params, error) {
 		certFile      = util.EnvOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
 		dnsSuffix     = util.EnvOrDefault("DNS_SUFFIX", "example.cloud")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
-		configURL     = util.EnvOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
@@ -72,7 +70,6 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&keyFile, "key", keyFile, "path to TLS key")
 	f.StringVar(&certFile, "cert", certFile, "path to TLS cert")
 	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name")
-	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	f.StringVar(&authHeader, "auth-header", authHeader, "auth header")
 
@@ -97,18 +94,6 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
-	cc, err := config.Load(configURL)
-	if err != nil {
-		return nil, err
-	}
-
-	conf, closer, err := cc.ServerTLSConfig(config.Credentials{
-		KeyFile:  keyFile,
-		CertFile: certFile,
-	}, config.VerifyClient{})
-	if err != nil {
-		return nil, err
-	}
 	rootKeyBytes, err := ioutil.ReadFile(rootKeyFile)
 	if err != nil {
 		return nil, err
@@ -124,11 +109,11 @@ func parseFlags(program string, args []string) (*params, error) {
 
 	return &params{
 		addr:          addr,
+		keyFile:       keyFile,
+		certFile:      certFile,
 		caAddr:        caAddr,
-		tls:           conf,
 		handler:       z.handler(ztsPath),
 		shutdownGrace: sg,
-		closers:       []io.Closer{closer},
 	}, nil
 }
 
@@ -140,14 +125,13 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 	defer params.Close()
 
 	server := &http.Server{
-		Addr:      params.addr,
-		Handler:   params.handler,
-		TLSConfig: params.tls,
+		Addr:    params.addr,
+		Handler: params.handler,
 	}
 
 	done := make(chan error, 2)
 	go func() {
-		done <- server.ListenAndServeTLS("", "")
+		done <- server.ListenAndServeTLS(params.certFile, params.keyFile)
 	}()
 
 	stopped := false
