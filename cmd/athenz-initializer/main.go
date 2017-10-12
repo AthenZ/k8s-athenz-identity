@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ghodss/yaml"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -59,19 +60,11 @@ func loadConfig(cs *kubernetes.Clientset, namespace string, configMap string) (*
 	return &c, nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
-		namespace    = envOrDefault("CONFIG_NAMESPACE", "default")
-		configMap    = envOrDefault("CONFIG_MAP", "athenz-initializer")
-		syncInterval = envOrDefault("SYNC_INTERVAL", "60s")
+		namespace    = util.EnvOrDefault("CONFIG_NAMESPACE", "default")
+		configMap    = util.EnvOrDefault("CONFIG_MAP", "athenz-initializer")
+		syncInterval = util.EnvOrDefault("SYNC_INTERVAL", "60s")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)

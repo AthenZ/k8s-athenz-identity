@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 var errEarlyExit = errors.New("early exit")
@@ -47,24 +48,15 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("ADDR", ":4080")
-		file          = envOrDefault("CONFIG", "/var/cluster/config.yaml")
-		shutdownGrace = envOrDefault("SHUTDOWN_GRACE", "10s")
+		addr          = util.EnvOrDefault("ADDR", ":4080")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "addr", addr, "listen address")
-	f.StringVar(&file, "file", file, "configuration file in JSON/YAML format")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -87,7 +79,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
-	c, err := config.Load(file)
+	c, err := cp()
 	if err != nil {
 		return nil, err
 	}

@@ -32,7 +32,10 @@ spec:
         - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
         - "--out-cert=/var/tls/athenz/public/service.cert"
         - "--out-ntoken=/tokens/ntoken"
-        env: [ { name: "DOMAIN", value: "k8s.admin"}, { "name": "SERVICE", value: "athenz-jwt-service" }]
+        env:
+        - { name: "NAMESPACE", valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: "ACCOUNT", valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
+
         volumeMounts:
         - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
         - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
@@ -51,7 +54,9 @@ spec:
         - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
         - "--out-cert=/var/tls/athenz/public/service.cert"
         - "--out-ntoken=/tokens/ntoken"
-        env: [ { name: "DOMAIN", value: "k8s.admin"}, { "name": "SERVICE", value: "athenz-jwt-service" }]
+        env:
+        - { name: "NAMESPACE", valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: "ACCOUNT", valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
         volumeMounts:
         - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
         - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
@@ -62,7 +67,7 @@ spec:
         imagePullPolicy: Never
         args:
         - "--cert=/var/tls/athenz/public/service.cert"
-        - "--identity-service=athenz-identity-agent.k8s-admin.svc.cluster.local"
+        - "--identity-cn=k8s.admin.k8s-node"
         - "--key=/var/tls/athenz/private/service.key"
         - "--sign-key-dir=/var/keys/private"
         volumeMounts:

@@ -96,10 +96,10 @@ type ServiceIPProvider func(domain, service string) (string, error)
 
 type Mapper struct {
 	provider ServiceIPProvider
-	config   config.ClusterConfiguration
+	config   *config.ClusterConfiguration
 }
 
-func NewMapper(c config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
+func NewMapper(c *config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
 	return &Mapper{
 		config:   c,
 		provider: p,

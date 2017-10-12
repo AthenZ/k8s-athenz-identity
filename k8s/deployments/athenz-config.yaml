@@ -21,6 +21,6 @@ spec:
         imagePullPolicy: Never
         args:
         - "--addr=:4080"
-        - "--file=/var/cluster/config.yaml"
+        - "--config=/var/cluster/config.yaml"
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}

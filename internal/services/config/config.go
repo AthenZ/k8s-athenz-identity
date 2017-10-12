@@ -7,13 +7,17 @@ import (
 	"net/url"
 	"strings"
 
+	"flag"
+
 	"github.com/ghodss/yaml"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 // TrustedSource is a source that can be trusted using CA certs.
 type TrustedSource string
 
 const (
+	AnySource   TrustedSource = ""               // trust any source
 	AthenzRoot  TrustedSource = "athenz"         // root CA to use to trust the Athenz service itself
 	ServiceRoot TrustedSource = "athenz-service" // root CA for certs minted by Athenz
 )
@@ -41,7 +45,7 @@ type ClusterConfiguration struct {
 	TrustRoots      map[TrustedSource]string `json:"trust-roots"`       // CA certs for various trusted sources
 }
 
-func (c *ClusterConfiguration) TrustRoot(src TrustedSource) (*x509.CertPool, error) {
+func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, error) {
 	b, ok := c.TrustRoots[src]
 	if !ok {
 		return nil, fmt.Errorf("no trust root found for %s", src)
@@ -73,24 +77,24 @@ func (c *ClusterConfiguration) DomainToNamespace(domain string) (namespace strin
 	return mangleDomain(domain)
 }
 
-func (c *ClusterConfiguration) KubeDNSToServerName(k8sDNSNameOrURL string) (string, error) {
+func (c *ClusterConfiguration) KubeDNSToDomainService(k8sDNSNameOrURL string) (string, string, error) {
 	k8sDNSName := k8sDNSNameOrURL
 	if strings.HasPrefix(k8sDNSNameOrURL, "https://") || strings.HasPrefix(k8sDNSNameOrURL, "http://") {
 		u, err := url.Parse(k8sDNSNameOrURL)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		k8sDNSName = u.Hostname()
 	}
 	expected := strings.Split(c.KubeDNSSuffix, ".")
 	actual := strings.Split(k8sDNSName, ".")
 	if len(actual) < 2 {
-		return "", fmt.Errorf("invalid k8s DNS name %q, must have at least 2 parts", k8sDNSName)
+		return "", "", fmt.Errorf("invalid k8s DNS name %q, must have at least 2 parts", k8sDNSName)
 	}
 	if len(actual) > 2 {
 		rest := actual[2:]
 		if len(rest) > len(expected) {
-			return "", fmt.Errorf("invalid k8s DNS name %q, has too many parts", k8sDNSName)
+			return "", "", fmt.Errorf("invalid k8s DNS name %q, has too many parts", k8sDNSName)
 		}
 		good := true
 		for i, part := range rest {
@@ -100,10 +104,10 @@ func (c *ClusterConfiguration) KubeDNSToServerName(k8sDNSNameOrURL string) (stri
 			}
 		}
 		if !good {
-			return "", fmt.Errorf("invalid k8s DNS name %q, bad suffix", k8sDNSName)
+			return "", "", fmt.Errorf("invalid k8s DNS name %q, bad suffix", k8sDNSName)
 		}
 	}
-	return c.AthenzSANName(c.NamespaceToDomain(actual[1]), actual[0]), nil
+	return c.NamespaceToDomain(actual[1]), actual[0], nil
 }
 
 func Load(fileOrUrl string) (*ClusterConfiguration, error) {
@@ -119,4 +123,12 @@ func Load(fileOrUrl string) (*ClusterConfiguration, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+func CmdLine(f *flag.FlagSet) func() (*ClusterConfiguration, error) {
+	configURL := util.EnvOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
+	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
+	return func() (*ClusterConfiguration, error) {
+		return Load(configURL)
+	}
 }

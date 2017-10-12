@@ -12,13 +12,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
-
 	"path/filepath"
 	"syscall"
+	"time"
 
-	"github.com/dimfeld/httptreemux"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 const ztsPath = "/zts/v1"
@@ -40,7 +39,6 @@ type params struct {
 	caAddr        string
 	tls           *tls.Config
 	handler       http.Handler
-	rootCAHandler http.Handler
 	shutdownGrace time.Duration
 	closers       []io.Closer
 }
@@ -52,25 +50,18 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("ADDR", ":4443")
-		caAddr        = envOrDefault("CA_ADDR", ":4080")
-		authHeader    = envOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
-		rootKeyFile   = envOrDefault("ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
-		rootCertFile  = envOrDefault("ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
-		keyFile       = envOrDefault("KEY_FILE", "/var/athenz/server/server.key")
-		certFile      = envOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
-		dnsSuffix     = envOrDefault("DNS_SUFFIX", "example.cloud")
-		shutdownGrace = envOrDefault("SHUTDOWN_GRACE", "10s")
+		addr          = util.EnvOrDefault("ADDR", ":4443")
+		caAddr        = util.EnvOrDefault("CA_ADDR", ":4080")
+		authHeader    = util.EnvOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
+		rootKeyFile   = util.EnvOrDefault("ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
+		rootCertFile  = util.EnvOrDefault("ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/athenz/server/server.key")
+		certFile      = util.EnvOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
+		dnsSuffix     = util.EnvOrDefault("DNS_SUFFIX", "example.cloud")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		configURL     = util.EnvOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
@@ -81,6 +72,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&keyFile, "key", keyFile, "path to TLS key")
 	f.StringVar(&certFile, "cert", certFile, "path to TLS cert")
 	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name")
+	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	f.StringVar(&authHeader, "auth-header", authHeader, "auth header")
 
@@ -105,11 +97,15 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
-	config, closer, err := tlsutil.ServerConfig(tlsutil.Config{
-		KeyFile:    keyFile,
-		CertFile:   certFile,
-		CACertFile: rootCertFile, // slightly weird
-	})
+	cc, err := config.Load(configURL)
+	if err != nil {
+		return nil, err
+	}
+
+	conf, closer, err := cc.ServerTLSConfig(config.Credentials{
+		KeyFile:  keyFile,
+		CertFile: certFile,
+	}, config.VerifyClient{})
 	if err != nil {
 		return nil, err
 	}
@@ -121,27 +117,16 @@ func parseFlags(program string, args []string) (*params, error) {
 	if err != nil {
 		return nil, err
 	}
-	myCertBytes, err := ioutil.ReadFile(certFile)
-	if err != nil {
-		return nil, err
-	}
 	z, err := newZTS(authHeader, rootCertBytes, rootKeyBytes, dnsSuffix)
 	if err != nil {
 		return nil, err
 	}
 
-	rootCAHandler := httptreemux.New()
-	rootCAHandler.GET("/ca", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
-		w.Header().Set("Context-Type", "text/plain")
-		w.Write(myCertBytes)
-	})
-
 	return &params{
 		addr:          addr,
 		caAddr:        caAddr,
-		tls:           config,
+		tls:           conf,
 		handler:       z.handler(ztsPath),
-		rootCAHandler: rootCAHandler,
 		shutdownGrace: sg,
 		closers:       []io.Closer{closer},
 	}, nil
@@ -160,16 +145,9 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 		TLSConfig: params.tls,
 	}
 
-	caServer := &http.Server{
-		Addr:    params.caAddr,
-		Handler: params.rootCAHandler,
-	}
 	done := make(chan error, 2)
 	go func() {
 		done <- server.ListenAndServeTLS("", "")
-	}()
-	go func() {
-		done <- caServer.ListenAndServe()
 	}()
 
 	stopped := false

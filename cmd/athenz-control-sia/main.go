@@ -15,7 +15,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -53,28 +52,19 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
-		endpoint        = envOrDefault("ZTS_ENDPOINT", "")
-		authHeader      = envOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
-		refreshInterval = envOrDefault("REFRESH_INTERVAL", "24h")
-		domain          = envOrDefault("DOMAIN", "")
-		service         = envOrDefault("SERVICE", "")
-		dnsSuffix       = envOrDefault("DNS_SUFFIX", "")
-		identityDir     = envOrDefault("IDENTITY_DIR", "/var/tls/athenz/private")
-		ntokenFile      = envOrDefault("TOKEN_FILE", "/tokens/ntoken")
-		certFile        = envOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
-		caCertFile      = envOrDefault("CA_CERT_FILE", "/var/tls/athenz/public/ca.cert")
-		configURL       = envOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
+		endpoint        = util.EnvOrDefault("ZTS_ENDPOINT", "")
+		authHeader      = util.EnvOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
+		refreshInterval = util.EnvOrDefault("REFRESH_INTERVAL", "24h")
+		namespace       = util.EnvOrDefault("NAMESPACE", "")
+		account         = util.EnvOrDefault("ACCOUNT", "")
+		dnsSuffix       = util.EnvOrDefault("DNS_SUFFIX", "")
+		identityDir     = util.EnvOrDefault("IDENTITY_DIR", "/var/tls/athenz/private")
+		ntokenFile      = util.EnvOrDefault("TOKEN_FILE", "/tokens/ntoken")
+		certFile        = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
+		caCertFile      = util.EnvOrDefault("CA_CERT_FILE", "/var/tls/athenz/public/ca.cert")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 
@@ -85,12 +75,12 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&ntokenFile, "out-ntoken", ntokenFile, "ntoken file to write")
 	f.StringVar(&certFile, "out-cert", certFile, `cert file to write`)
 	f.StringVar(&caCertFile, "out-ca-cert", caCertFile, "CA cert file to write (blank to skip the write)")
-	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
 
-	f.StringVar(&domain, "domain", domain, "Athenz domain, required")
-	f.StringVar(&service, "service", service, "Athenz service, required")
+	f.StringVar(&namespace, "namespace", namespace, "Pod namespace, required")
+	f.StringVar(&account, "account", account, "Service account, required")
 	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name, required")
 	f.StringVar(&identityDir, "identity-dir", identityDir, fmt.Sprintf("directory having %q and %q files", keyFileName, versionFileName))
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -111,8 +101,8 @@ func parseFlags(program string, args []string) (*params, error) {
 	if err := util.CheckFields("arguments", map[string]bool{
 		"mode":       mode == "",
 		"endpoint":   endpoint == "",
-		"domain":     domain == "",
-		"service":    service == "",
+		"namespace":  namespace == "",
+		"account":    account == "",
 		"dns-suffix": dnsSuffix == "",
 	}); err != nil {
 		return nil, err
@@ -122,7 +112,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid mode %q must be one of init or refresh", mode)
 	}
 
-	cc, err := config.Load(configURL)
+	cc, err := cp()
 	if err != nil {
 		return nil, err
 	}
@@ -144,12 +134,8 @@ func parseFlags(program string, args []string) (*params, error) {
 		return key, string(ver), nil
 	}
 
-	athenzPool, err := cc.TrustRoot(config.AthenzRoot)
-	if err != nil {
-		return nil, err
-	}
-	conf := tlsutil.BaseClientConfig()
-	conf.RootCAs = athenzPool
+	conf, err := cc.ClientTLSConfig(config.AthenzRoot)
+	domain := cc.NamespaceToDomain(namespace)
 
 	client, err := newClient(ztsConfig{
 		endpoint:   endpoint,
@@ -157,9 +143,9 @@ func parseFlags(program string, args []string) (*params, error) {
 		authHeader: authHeader,
 		ks:         keySource,
 		domain:     domain,
-		service:    service,
+		service:    account,
 		opts: util.CSROptions{
-			DNSNames: []string{fmt.Sprintf("%s.%s.%s", service, strings.Replace(domain, ".", "-", -1), dnsSuffix)},
+			DNSNames: []string{fmt.Sprintf("%s.%s.%s", account, strings.Replace(domain, ".", "-", -1), dnsSuffix)},
 		},
 	})
 	if err != nil {

@@ -130,6 +130,7 @@ then
 fi
 
 section "Setup node keys using athenz-control-sia"
+echo "****" This can fail if basic services are not yet up. Just re-run the script if this happens "****"
 athenz_config_ip=$(kubectl --namespace=${SNS} get service athenz-config -o jsonpath='{.spec.clusterIP}')
 
 if [[ ! -f node-keys/service.cert ]]
@@ -138,7 +139,7 @@ then
     openssl genrsa -out node-keys/service.key 2048
     echo -n v1> node-keys/service.version
     athenz-control-sia --mode=init --dns-suffix=example.cloud  \
-        --domain=k8s.admin --service=k8s-node --endpoint https://${mock_athenz_ip}/zts/v1 \
+        --namespace=k8s-admin --account=k8s-node --endpoint https://${mock_athenz_ip}/zts/v1 \
         --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert \
         --identity-dir=./node-keys/ --config http://${athenz_config_ip}/v1
     sudo cp node-keys/service.key /var/athenz/node/identity/service.key

@@ -7,12 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"crypto/x509"
-
 	"github.com/dimfeld/httptreemux"
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/clients/go/zts"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -58,7 +57,7 @@ type HandlerConfig struct {
 	Signer          Signer
 	AttrProvider    identity.AttributeProvider
 	ZTSEndpoint     string
-	ZTSCAPool       *x509.CertPool
+	ClusterConfig   *config.ClusterConfiguration
 	ProviderService string
 	DNSSuffix       string
 }
@@ -70,6 +69,7 @@ func (h *HandlerConfig) assertValid() error {
 		"ZTSEndpoint":     h.ZTSEndpoint == "",
 		"ProviderService": h.ProviderService == "",
 		"DNSSuffix":       h.DNSSuffix == "",
+		"ClusterConfig":   h.ClusterConfig == nil,
 	})
 }
 
@@ -149,7 +149,7 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 		c.SANIPs = append(c.SANIPs, subject.ServiceIP)
 
 	}
-	z, err := newZTS(h.ZTSEndpoint, h.ZTSCAPool, c)
+	z, err := newZTS(h.ZTSEndpoint, h.ClusterConfig, c)
 	if err != nil {
 		return handle(errors.Wrap(err, "ZTS client create"))
 	}
@@ -203,7 +203,7 @@ func (h *handler) getRefreshParams(idHandle string, r *http.Request) (*RefreshRe
 }
 
 func (h *handler) doRefresh(req *RefreshRequest, c identityContext) (*Identity, error) {
-	z, err := newZTS(h.ZTSEndpoint, h.ZTSCAPool, c)
+	z, err := newZTS(h.ZTSEndpoint, h.ClusterConfig, c)
 	if err != nil {
 		return nil, errors.Wrap(err, "ZTS client create")
 	}

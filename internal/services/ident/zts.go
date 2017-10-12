@@ -6,10 +6,8 @@ import (
 	"net"
 	"net/http"
 
-	"crypto/x509"
-
 	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -22,7 +20,7 @@ type ztsClient struct {
 	context  identityContext
 }
 
-func newZTS(endpoint string, pool *x509.CertPool, context identityContext) (*ztsClient, error) {
+func newZTS(endpoint string, cc *config.ClusterConfiguration, context identityContext) (*ztsClient, error) {
 	var sanIPs []net.IP
 	for _, str := range context.SANIPs {
 		ip := net.ParseIP(str)
@@ -30,11 +28,13 @@ func newZTS(endpoint string, pool *x509.CertPool, context identityContext) (*zts
 			return nil, fmt.Errorf("invalid SAN IP %q", str)
 		}
 	}
-	config := tlsutil.BaseClientConfig()
-	config.RootCAs = pool
+	conf, err := cc.ClientTLSConfig(config.AthenzRoot)
+	if err != nil {
+		return nil, err
+	}
 	return &ztsClient{
 		endpoint: endpoint,
-		tls:      config,
+		tls:      conf,
 		sanIPs:   sanIPs,
 		context:  context,
 	}, nil

@@ -18,7 +18,6 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -52,29 +51,20 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr              = envOrDefault("ADDR", "unix:///var/athenz/agent/agent.sock")
-		clientKeyFile     = envOrDefault("KEY_FILE", "/var/athenz/secrets/server.key")
-		clientCertFile    = envOrDefault("CERT_FILE", "/var/athenz/secrets/server.cert")
-		providerService   = envOrDefault("PROVIDER_SERVICE", "k8s.athenz.callback")
-		shutdownGrace     = envOrDefault("SHUTDOWN_GRACE", "10s")
-		podEndpoint       = envOrDefault("POD_ENDPOINT", "http://:10255")
-		podServiceTimeout = envOrDefault("POD_TIMEOUT", "10s")
-		jwtEndpoint       = envOrDefault("JWT_ENDPOINT", "https://jwt-service.kube-system:4443/v1")
-		jwtServiceTimeout = envOrDefault("JWT_TIMEOUT", "10s")
-		ztsEndpoint       = envOrDefault("ZTS_ENDPOINT", "https://mock-athenz.kube-system/zts/v1")
-		driverSource      = envOrDefault("DRIVER_SOURCE", "/usr/bin/athenz-volume-driver")
-		driverTarget      = envOrDefault("DRIVER_TARGET", "/drivers/athenz-volume-driver")
-		configUrl         = envOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
+		addr              = util.EnvOrDefault("ADDR", "unix:///var/athenz/agent/agent.sock")
+		clientKeyFile     = util.EnvOrDefault("KEY_FILE", "/var/athenz/secrets/server.key")
+		clientCertFile    = util.EnvOrDefault("CERT_FILE", "/var/athenz/secrets/server.cert")
+		providerService   = util.EnvOrDefault("PROVIDER_SERVICE", "k8s.athenz.callback")
+		shutdownGrace     = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		podEndpoint       = util.EnvOrDefault("POD_ENDPOINT", "http://:10255")
+		podServiceTimeout = util.EnvOrDefault("POD_TIMEOUT", "10s")
+		jwtEndpoint       = util.EnvOrDefault("JWT_ENDPOINT", "https://jwt-service.kube-system:4443/v1")
+		jwtServiceTimeout = util.EnvOrDefault("JWT_TIMEOUT", "10s")
+		ztsEndpoint       = util.EnvOrDefault("ZTS_ENDPOINT", "https://mock-athenz.kube-system/zts/v1")
+		driverSource      = util.EnvOrDefault("DRIVER_SOURCE", "/usr/bin/athenz-volume-driver")
+		driverTarget      = util.EnvOrDefault("DRIVER_TARGET", "/drivers/athenz-volume-driver")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
@@ -90,7 +80,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	f.StringVar(&driverSource, "driver-source", driverSource, "source path of driver file in container")
 	f.StringVar(&driverTarget, "driver-target", driverTarget, "target host path of driver file as mounted in container")
-	f.StringVar(&configUrl, "config", configUrl, "cluster config URL or local file path")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -121,27 +111,24 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid pod service timeout %q, %v", podServiceTimeout, err)
 	}
 
-	cc, err := config.Load(configUrl)
+	cc, err := cp()
 	if err != nil {
 		return nil, errors.Wrap(err, "load cluster config")
 	}
-	cfg, closer, err := tlsutil.ClientConfig(tlsutil.Config{
+	cfg, closer, err := cc.ClientTLSConfigWithCreds(config.Credentials{
 		KeyFile:  clientKeyFile,
 		CertFile: clientCertFile,
-	})
+	}, config.ServiceRoot)
 	if err != nil {
 		return nil, err
 	}
-	servicePool, err := cc.TrustRoot(config.ServiceRoot)
+
+	d, s, err := cc.KubeDNSToDomainService(jwtEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	cfg.RootCAs = servicePool
-	srv, err := cc.KubeDNSToServerName(jwtEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	cfg.ServerName = srv
+	cfg.ServerName = cc.AthenzSANName(d, s)
+
 	client := jwt.NewClient(jwtEndpoint, &http.Client{
 		Timeout: jt,
 		Transport: &http.Transport{
@@ -151,17 +138,14 @@ func parseFlags(program string, args []string) (*params, error) {
 	l := &lookup{
 		podEndpoint: os.ExpandEnv(podEndpoint),
 		timeout:     pt,
-		mapper:      identity.NewMapper(*cc, nil), //TODO: service IP provider
+		mapper:      identity.NewMapper(cc, nil), //TODO: service IP provider
 	}
-	athenzPool, err := cc.TrustRoot(config.AthenzRoot)
-	if err != nil {
-		return nil, err
-	}
+
 	handler, err := ident.NewHandler(apiVersion, ident.HandlerConfig{
 		Signer:          client.GetJWT,
 		AttrProvider:    l.getPodAttributes,
 		ZTSEndpoint:     ztsEndpoint,
-		ZTSCAPool:       athenzPool,
+		ClusterConfig:   cc,
 		ProviderService: providerService,
 		DNSSuffix:       cc.AthenzDNSSuffix,
 	})

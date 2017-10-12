@@ -14,8 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"os/exec"
-
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -56,24 +54,16 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
-		idFile          = envOrDefault("ID_FILE", "/identity/id")
-		endpoint        = envOrDefault("ENDPOINT", "unix:///identity/connect/agent.sock")
-		refreshInterval = envOrDefault("REFRESH_INTERVAL", "1h")
-		ntokenFile      = envOrDefault("TOKEN_FILE", "/tokens/ntoken")
-		keyFile         = envOrDefault("KEY_FILE", "/var/tls/athenz/service.key")
-		certFile        = envOrDefault("CERT_FILE", "/var/tls/athenz/service.cert")
-		caCertFile      = envOrDefault("CA_CERT_FILE", "/var/tls/athenz/cacert.pem")
+		idFile          = util.EnvOrDefault("ID_FILE", "/identity/id")
+		endpoint        = util.EnvOrDefault("ENDPOINT", "unix:///identity/connect/agent.sock")
+		refreshInterval = util.EnvOrDefault("REFRESH_INTERVAL", "1h")
+		ntokenFile      = util.EnvOrDefault("TOKEN_FILE", "/tokens/ntoken")
+		keyFile         = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/service.key")
+		certFile        = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/service.cert")
+		caCertFile      = util.EnvOrDefault("CA_CERT_FILE", "/var/tls/athenz/cacert.pem")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
@@ -171,11 +161,6 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 		}
 		return w.Save()
 	}
-
-	cmd := exec.Command("find", "/identity")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
 
 	if params.init {
 		ident, err := params.client.Init()

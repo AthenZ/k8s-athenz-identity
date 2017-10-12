@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 var errEarlyExit = fmt.Errorf("early exit")
@@ -52,24 +53,15 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("ADDR", ":4443")
-		signingKeyDir = envOrDefault("PRIVATE_KEYS_DIR", "/var/keys/private")
-		keyFile       = envOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
-		certFile      = envOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
-		trustService  = envOrDefault("IDENTITY_SERVICE", "athenz-identity-agent.k8s-admin.svc.cluster.local")
-		shutdownGrace = envOrDefault("SHUTDOWN_GRACE", "10s")
-		tokenExpiry   = envOrDefault("TOKEN_EXPIRY", "5m")
-		configURL     = envOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
+		addr          = util.EnvOrDefault("ADDR", ":4443")
+		signingKeyDir = util.EnvOrDefault("PRIVATE_KEYS_DIR", "/var/keys/private")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
+		certFile      = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
+		trustCN       = util.EnvOrDefault("IDENTITY_CN", "k8s.admin.k8s-node")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		tokenExpiry   = util.EnvOrDefault("TOKEN_EXPIRY", "5m")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 
@@ -77,10 +69,10 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&signingKeyDir, "sign-key-dir", signingKeyDir, "directory containing private signing keys")
 	f.StringVar(&keyFile, "key", keyFile, "path to key")
 	f.StringVar(&certFile, "cert", certFile, "path to cert")
-	f.StringVar(&trustService, "identity-service", trustService, "service allowed to mint JWTs")
+	f.StringVar(&trustCN, "identity-cn", trustCN, "common name for identity agent cert")
 	f.StringVar(&tokenExpiry, "token-expiry", tokenExpiry, "token expiry for JWTs")
-	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -97,24 +89,25 @@ func parseFlags(program string, args []string) (*params, error) {
 
 	privateSource := keys.NewPrivateKeySource(signingKeyDir, services.AthensInitSecret)
 
-	cc, err := config.Load(configURL)
-	if err != nil {
-		return nil, err
-	}
-	servicePool, err := cc.TrustRoot(config.ServiceRoot)
+	cc, err := cp()
 	if err != nil {
 		return nil, err
 	}
 
-	config, closer, err := tlsutil.ServerConfig(tlsutil.Config{
-		KeyFile:  keyFile,
-		CertFile: certFile,
-	})
+	conf, closer, err := cc.ServerTLSConfig(
+		config.Credentials{
+			KeyFile:  keyFile,
+			CertFile: certFile,
+		},
+		config.VerifyClient{
+			Source: config.ServiceRoot,
+			Allow: func(c *x509.Certificate) bool {
+				return c.Subject.CommonName == trustCN
+			},
+		})
 	if err != nil {
 		return nil, err
 	}
-	config.ClientCAs = servicePool
-	// TODO: make thios stronger and only allow the identity agent to connect
 
 	sg, err := time.ParseDuration(shutdownGrace)
 	if err != nil {
@@ -136,7 +129,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	p := &params{
 		addr:          addr,
 		handler:       jwt.NewHandler(apiVersionPrefix, ser.IdentityDoc),
-		tls:           config,
+		tls:           conf,
 		closers:       []io.Closer{closer},
 		shutdownGrace: sg,
 	}

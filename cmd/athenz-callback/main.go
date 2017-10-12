@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/services"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
-	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -53,33 +54,26 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("ADDR", ":4443")
-		adminDomain   = envOrDefault("ADMIN_DOMAIN", "k8s.admin")
-		keyFile       = envOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
-		certFile      = envOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
-		caCertFile    = envOrDefault("CA_CERT_FILE", "")
-		publicKeyDir  = envOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
-		shutdownGrace = envOrDefault("SHUTDOWN_GRACE", "10s")
+		addr          = util.EnvOrDefault("ADDR", ":4443")
+		adminDomain   = util.EnvOrDefault("ADMIN_DOMAIN", "k8s.admin")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
+		certFile      = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
+		publicKeyDir  = util.EnvOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
+		ztsCommonName = util.EnvOrDefault("ZTS_COMMON_NAME", "zts.example.cloud")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "listen", addr, "[<ip>]:<port> to listen on")
 	f.StringVar(&keyFile, "key", keyFile, "path to key file")
 	f.StringVar(&certFile, "cert", certFile, "path to cert file")
-	f.StringVar(&caCertFile, "ca-cert", caCertFile, "path to CA cert")
 	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
 	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
+	f.StringVar(&ztsCommonName, "zts-name", ztsCommonName, "common name to verify in Athenz TLS cert")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -102,6 +96,11 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
+	cc, err := cp()
+	if err != nil {
+		return nil, err
+	}
+
 	if clusterConfig == nil {
 		clusterConfig, err = rest.InClusterConfig()
 		if err != nil {
@@ -115,7 +114,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	}
 
 	publicSource := keys.NewPublicKeySource(publicKeyDir, services.AthensInitSecret)
-	mapper := identity.NewMapper(config.ClusterConfiguration{}, nil) // TODO: FIX ARGUMENTS
+	mapper := identity.NewMapper(cc, nil) // TODO: Service IP provider
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
 			parts := strings.SplitN(podID, "/", 2)
@@ -134,11 +133,17 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, err
 	}
 
-	config, closer, err := tlsutil.ServerConfig(tlsutil.Config{
-		KeyFile:    keyFile,
-		CertFile:   certFile,
-		CACertFile: caCertFile,
-	})
+	config, closer, err := cc.ServerTLSConfig(
+		config.Credentials{
+			KeyFile:  keyFile,
+			CertFile: certFile,
+		},
+		config.VerifyClient{
+			Source: config.AthenzRoot,
+			Allow: func(cert *x509.Certificate) bool {
+				return cert.Subject.CommonName == ztsCommonName
+			},
+		})
 	if err != nil {
 		return nil, err
 	}
