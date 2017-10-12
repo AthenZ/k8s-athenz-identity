@@ -1,24 +1,8 @@
 ---
-kind: Role
-apiVersion: rbac.authorization.k8s.io/v1
-metadata: { name: local-secrets-reader }
-rules: [ { apiGroups: [""], resources: ["secrets"], verbs: [ "get" ] } ]
-
----
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
 metadata: { name: athenz-initializer }
 rules: [ { apiGroups: [""], resources: ["pods"], verbs: [ "get", "list", "watch", "patch", "initialize" ] } ]
-
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRole
-metadata: { name: athenz-callback }
-rules: [ { apiGroups: [""], resources: ["pods", "services"], verbs: [ "get" ] } ]
-
----
-{ apiVersion: v1, kind: ServiceAccount, metadata: { name: mock-athenz } }
-
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
@@ -32,6 +16,12 @@ subjects:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata: { name: athenz-callback }
+rules: [ { apiGroups: [""], resources: ["pods", "services"], verbs: [ "get" ] } ]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: athenz-callback
@@ -42,19 +32,5 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: athenz-callback
-  apiGroup: rbac.authorization.k8s.io
-
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: RoleBinding
-metadata: { name: athenz-secrets-local }
-roleRef:
-  kind: Role
-  name: local-secrets-reader
-  apiGroup: rbac.authorization.k8s.io
-subjects:
-- kind: User
-  name: system:serviceaccount:kube-system:mock-athenz
-  namespace: kube-system
   apiGroup: rbac.authorization.k8s.io
 

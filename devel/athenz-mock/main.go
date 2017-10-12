@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -53,12 +54,10 @@ func parseFlags(program string, args []string) (*params, error) {
 	var (
 		addr          = util.EnvOrDefault("ADDR", ":4443")
 		caAddr        = util.EnvOrDefault("CA_ADDR", ":4080")
-		authHeader    = util.EnvOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
 		rootKeyFile   = util.EnvOrDefault("ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
 		rootCertFile  = util.EnvOrDefault("ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
 		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/athenz/server/server.key")
 		certFile      = util.EnvOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
-		dnsSuffix     = util.EnvOrDefault("DNS_SUFFIX", "example.cloud")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 	)
 
@@ -69,9 +68,8 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&rootCertFile, "root-ca-cert", rootCertFile, "path to root CA TLS cert")
 	f.StringVar(&keyFile, "key", keyFile, "path to TLS key")
 	f.StringVar(&certFile, "cert", certFile, "path to TLS cert")
-	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
-	f.StringVar(&authHeader, "auth-header", authHeader, "auth header")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -94,6 +92,11 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
+	cc, err := cp()
+	if err != nil {
+		return nil, err
+	}
+
 	rootKeyBytes, err := ioutil.ReadFile(rootKeyFile)
 	if err != nil {
 		return nil, err
@@ -102,7 +105,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	if err != nil {
 		return nil, err
 	}
-	z, err := newZTS(authHeader, rootCertBytes, rootKeyBytes, dnsSuffix)
+	z, err := newZTS(cc.AuthHeader, rootCertBytes, rootKeyBytes, cc.AthenzDNSSuffix)
 	if err != nil {
 		return nil, err
 	}

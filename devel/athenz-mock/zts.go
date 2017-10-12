@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 
@@ -13,8 +14,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
-	"go.corp.yahoo.com/clusterville/log"
 )
+
+type PublicKey struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+	PEM     string `json:"pem"`
+}
+
+type Config struct {
+	PublicKeys        []PublicKey       `json:"public-keys"`
+	ProviderEndpoints map[string]string `json:"provider-endpoints"`
+}
 
 type InstanceRefreshRequest struct {
 	Csr        string `json:"csr"`
@@ -88,6 +99,25 @@ func newZTS(authHeader string, caCertPEM, caKeyPEM []byte, dnsSuffix string) (*z
 	}, nil
 }
 
+func (z *zts) decode(r *http.Request, data interface{}) error {
+	b, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("body read error for %s %v", r.Method, r.URL))
+	}
+	log.Printf("body for %s %v,\n%s\n", r.Method, r.URL, b)
+	err = json.Unmarshal(b, data)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("JSON unmarshal error for %s", b))
+	}
+	return nil
+}
+
+func (z *zts) doJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(data)
+}
+
 func (z *zts) createCreds(domain, service string, csr []byte) (string, []byte, error) {
 	req, err := getCSR([]byte(csr))
 	if err != nil {
@@ -108,19 +138,6 @@ func (z *zts) createCreds(domain, service string, csr []byte) (string, []byte, e
 	return tok, out, nil
 }
 
-func (z *zts) decode(r *http.Request, data interface{}) error {
-	b, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("body read error for %s %v", r.Method, r.URL))
-	}
-	log.Printf("body for %s %v,\n%s\n", r.Method, r.URL, b)
-	err = json.Unmarshal(b, data)
-	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("JSON unmarshal error for %s", b))
-	}
-	return nil
-}
-
 func (z *zts) getInstanceRefreshRequest(r *http.Request) (*InstanceRefreshRequest, error) {
 	var in InstanceRefreshRequest
 	err := z.decode(r, &in)
@@ -135,13 +152,7 @@ func (z *zts) getInstanceRefreshRequest(r *http.Request) (*InstanceRefreshReques
 	return &in, nil
 }
 
-func (z *zts) doJSON(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(data)
-}
-
-func (z *zts) credentialsForKeyOwner(w http.ResponseWriter, r *http.Request, s service) {
+func (z *zts) CredentialsForKeyOwner(w http.ResponseWriter, r *http.Request, s service) {
 	in, err := z.getInstanceRefreshRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -178,7 +189,7 @@ func (z *zts) getInstanceRegisterInfo(r *http.Request) (*InstanceRegisterInforma
 	return &in, nil
 }
 
-func (z *zts) providerRegistration(w http.ResponseWriter, r *http.Request) {
+func (z *zts) ProviderRegistration(w http.ResponseWriter, r *http.Request) {
 	in, err := z.getInstanceRegisterInfo(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -213,7 +224,7 @@ func (z *zts) getInstanceRefreshInfo(r *http.Request) (*InstanceRefreshRequest, 
 	return &in, nil
 }
 
-func (z *zts) providerRefresh(w http.ResponseWriter, r *http.Request, ri refreshInput) {
+func (z *zts) ProviderRefresh(w http.ResponseWriter, r *http.Request, ri refreshInput) {
 	in, err := z.getInstanceRefreshInfo(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -237,16 +248,16 @@ func (z *zts) providerRefresh(w http.ResponseWriter, r *http.Request, ri refresh
 func (z *zts) handler(prefix string) http.Handler {
 	router := httptreemux.New()
 	router.POST(prefix+"/instance/:domain/:service/refresh", func(w http.ResponseWriter, r *http.Request, ps map[string]string) {
-		z.credentialsForKeyOwner(w, r, service{
+		z.CredentialsForKeyOwner(w, r, service{
 			domain: ps["domain"],
 			name:   ps["service"],
 		})
 	})
 	router.POST(prefix+"/instance", func(w http.ResponseWriter, r *http.Request, ps map[string]string) {
-		z.providerRegistration(w, r)
+		z.ProviderRegistration(w, r)
 	})
 	router.POST(prefix+"/instance/:provider/:domain/:service/:instanceId", func(w http.ResponseWriter, r *http.Request, ps map[string]string) {
-		z.providerRefresh(w, r, refreshInput{
+		z.ProviderRefresh(w, r, refreshInput{
 			service: service{
 				domain: ps["domain"],
 				name:   ps["service"],

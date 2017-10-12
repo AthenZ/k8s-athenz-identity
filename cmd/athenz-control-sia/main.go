@@ -55,12 +55,9 @@ func (p *params) Close() error {
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
-		endpoint        = util.EnvOrDefault("ZTS_ENDPOINT", "")
-		authHeader      = util.EnvOrDefault("AUTH_HEADER", "Athenz-Principal-Auth")
 		refreshInterval = util.EnvOrDefault("REFRESH_INTERVAL", "24h")
 		namespace       = util.EnvOrDefault("NAMESPACE", "")
 		account         = util.EnvOrDefault("ACCOUNT", "")
-		dnsSuffix       = util.EnvOrDefault("DNS_SUFFIX", "")
 		identityDir     = util.EnvOrDefault("IDENTITY_DIR", "/var/tls/athenz/private")
 		ntokenFile      = util.EnvOrDefault("TOKEN_FILE", "/tokens/ntoken")
 		certFile        = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
@@ -69,8 +66,6 @@ func parseFlags(program string, args []string) (*params, error) {
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
-	f.StringVar(&endpoint, "endpoint", endpoint, "ZTS endpoint with /v1 path, required")
-	f.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
 	f.StringVar(&refreshInterval, "refresh-interval", refreshInterval, "cert refresh interval")
 	f.StringVar(&ntokenFile, "out-ntoken", ntokenFile, "ntoken file to write")
 	f.StringVar(&certFile, "out-cert", certFile, `cert file to write`)
@@ -78,7 +73,6 @@ func parseFlags(program string, args []string) (*params, error) {
 
 	f.StringVar(&namespace, "namespace", namespace, "Pod namespace, required")
 	f.StringVar(&account, "account", account, "Service account, required")
-	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name, required")
 	f.StringVar(&identityDir, "identity-dir", identityDir, fmt.Sprintf("directory having %q and %q files", keyFileName, versionFileName))
 	cp := config.CmdLine(f)
 
@@ -99,11 +93,9 @@ func parseFlags(program string, args []string) (*params, error) {
 	}
 
 	if err := util.CheckFields("arguments", map[string]bool{
-		"mode":       mode == "",
-		"endpoint":   endpoint == "",
-		"namespace":  namespace == "",
-		"account":    account == "",
-		"dns-suffix": dnsSuffix == "",
+		"mode":      mode == "",
+		"namespace": namespace == "",
+		"account":   account == "",
 	}); err != nil {
 		return nil, err
 	}
@@ -138,14 +130,14 @@ func parseFlags(program string, args []string) (*params, error) {
 	domain := cc.NamespaceToDomain(namespace)
 
 	client, err := newClient(ztsConfig{
-		endpoint:   endpoint,
+		endpoint:   cc.ZTSEndpoint,
 		tls:        conf,
-		authHeader: authHeader,
+		authHeader: cc.AuthHeader,
 		ks:         keySource,
 		domain:     domain,
 		service:    account,
 		opts: util.CSROptions{
-			DNSNames: []string{fmt.Sprintf("%s.%s.%s", account, strings.Replace(domain, ".", "-", -1), dnsSuffix)},
+			DNSNames: []string{fmt.Sprintf("%s.%s.%s", account, strings.Replace(domain, ".", "-", -1), cc.AthenzDNSSuffix)},
 		},
 	})
 	if err != nil {

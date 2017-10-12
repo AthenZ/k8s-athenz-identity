@@ -26,9 +26,6 @@ spec:
         imagePullPolicy: Never
         args:
         - "--mode=init"
-        - "--auth-header=Athenz-Principal-Auth"
-        - "--dns-suffix=example.cloud"
-        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
         - "--identity-dir=/var/tls/athenz/private"
         - "--cert-file=/var/tls/athenz/public/service.cert"
         env:
@@ -46,9 +43,6 @@ spec:
         imagePullPolicy: Never
         args:
         - "--mode=refresh"
-        - "--auth-header=Athenz-Principal-Auth"
-        - "--dns-suffix=example.cloud"
-        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
         - "--identity-dir=/var/tls/athenz/private"
         - "--cert-file=/var/tls/athenz/public/service.cert"
         env:

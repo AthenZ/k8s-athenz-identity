@@ -42,7 +42,10 @@ type ClusterConfiguration struct {
 	AthenzDNSSuffix string                   `json:"athenz-dns-suffix"` // the DNS suffix for Athenz minted certs
 	KubeDNSSuffix   string                   `json:"kube-dns-suffix"`   // the DNS suffix configured for kube-dns
 	AdminDomain     string                   `json:"admin-domain"`      // the admin domain used for namespace to domain mapping
+	ZTSEndpoint     string                   `json:"zts-endpoint"`      // ZTS endpoint with /v1 path
+	ProviderService string                   `json:"provider-service"`  // the provider service as a fully qualified Athenz name
 	TrustRoots      map[TrustedSource]string `json:"trust-roots"`       // CA certs for various trusted sources
+	AuthHeader      string                   `json:"auth-header"`       // auth header name for Athenz requests
 }
 
 func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, error) {

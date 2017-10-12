@@ -46,10 +46,10 @@ kubectl --namespace=${SNS} apply -f rbac.yaml
 section "Setup mock-athenz"
 
 # first create the mock-athenz service so we can get the cluster IP
-kubectl --namespace=${SNS} apply -f services/mock-athenz.yaml
+kubectl --namespace=${NS} apply -f services/mock-athenz.yaml
 
-mock_athenz_service=mock-athenz.${SNS}.svc.cluster.local
-mock_athenz_ip=$(kubectl --namespace=${SNS} get service mock-athenz -o jsonpath='{.spec.clusterIP}')
+mock_athenz_service=mock-athenz.${NS}.svc.cluster.local
+mock_athenz_ip=$(kubectl --namespace=${NS} get service mock-athenz -o jsonpath='{.spec.clusterIP}')
 mock_athenz_url="https://${mock_athenz_ip}"
 
 # create a specific root CA for the Athenz service itself, distinct from the root CA for workloads
@@ -81,7 +81,7 @@ EOF
     openssl x509 -req -in /tmp/sslcert.csr -extfile /tmp/san.cnf -extensions ext -signkey athenz-ca.pem -days 730 -out athenz-ca.pub.pem
     openssl x509 -noout -text < athenz-ca.pub.pem
     rm -f /tmp/san.cnf /tmp/sslcert.csr
-    kubectl --namespace=${SNS} create secret generic mock-athenz-tls \
+    kubectl --namespace=${NS} create secret generic mock-athenz-tls \
         --from-literal="server.key=`cat athenz-ca.pem`" \
         --from-literal="server.cert=`cat athenz-ca.pub.pem`"
 fi
@@ -107,15 +107,15 @@ EOF
     openssl x509 -req -in /tmp/sslcert.csr -signkey athenz-root-ca.pem -days 730 -out athenz-root-ca.pub.pem
     openssl x509 -noout -text < athenz-root-ca.pub.pem
     rm -f /tmp/san.cnf /tmp/sslcert.csr
-    kubectl --namespace=${SNS} create secret generic mock-athenz-root-ca \
+    kubectl --namespace=${NS} create secret generic mock-athenz-root-ca \
         --from-literal="key=`cat athenz-root-ca.pem`" \
         --from-literal="cert=`cat athenz-root-ca.pub.pem`"
 fi
 
-kubectl --namespace=${SNS} apply -f deployments/mock-athenz.yaml
+kubectl --namespace=${NS} apply -f deployments/mock-athenz.yaml
 
 section Setup athenz config map
-athenz-write-config >/tmp/cluster.yaml
+athenz-write-config --zts-endpoint=https://${mock_athenz_ip}:4443/zts/v1 >/tmp/cluster.yaml
 athenz-write-config --wrap | kubectl --namespace=${NS} apply -f -
 
 section "Create signing keys"
@@ -135,10 +135,9 @@ then
     mkdir -p ./node-keys
     openssl genrsa -out node-keys/service.key 2048
     echo -n v1> node-keys/service.version
-    athenz-control-sia --mode=init --dns-suffix=example.cloud  \
-        --namespace=k8s-admin --account=k8s-node --endpoint https://${mock_athenz_ip}/zts/v1 \
-        --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert \
-        --identity-dir=./node-keys/ --config /tmp/cluster.yaml
+    athenz-control-sia --mode=init --identity-dir=./node-keys \
+        --namespace=k8s-admin --account=k8s-node --config /tmp/cluster.yaml \
+        --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert
     sudo cp node-keys/service.key /var/athenz/node/identity/service.key
     sudo cp node-keys/service.cert /var/athenz/node/identity/service.cert
     sudo cp node-keys/ca.cert /var/athenz/node/identity/ca.cert

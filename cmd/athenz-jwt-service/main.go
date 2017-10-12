@@ -57,9 +57,9 @@ func parseFlags(program string, args []string) (*params, error) {
 	var (
 		addr          = util.EnvOrDefault("ADDR", ":4443")
 		signingKeyDir = util.EnvOrDefault("PRIVATE_KEYS_DIR", "/var/keys/private")
-		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
-		certFile      = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
-		trustCN       = util.EnvOrDefault("IDENTITY_CN", "k8s.admin.k8s-node")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "")
+		certFile      = util.EnvOrDefault("CERT_FILE", "")
+		trustCN       = util.EnvOrDefault("IDENTITY_CN", "")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 		tokenExpiry   = util.EnvOrDefault("TOKEN_EXPIRY", "5m")
 	)
@@ -85,6 +85,14 @@ func parseFlags(program string, args []string) (*params, error) {
 	if showVersion {
 		fmt.Println(getVersion())
 		return nil, errEarlyExit
+	}
+
+	if err := util.CheckFields("arguments", map[string]bool{
+		"key":         keyFile == "",
+		"cert":        certFile == "",
+		"identity-cn": trustCN == "",
+	}); err != nil {
+		return nil, err
 	}
 
 	privateSource := keys.NewPrivateKeySource(signingKeyDir, services.AthensInitSecret)

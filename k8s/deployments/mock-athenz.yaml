@@ -16,16 +16,15 @@ spec:
       volumes:
       - { name: "root-ca", secret: { secretName: "mock-athenz-root-ca" } }
       - { name: "tls", secret: { secretName: "mock-athenz-tls" } }
+      - { name: config-volume, configMap: { name: athenz-config } }
 
       containers:
       - name: main
         image: local/k8s-mock-athenz:latest
         imagePullPolicy: Never
         args:
-        - "--auth-header=Athenz-Principal-Auth"
         - "--ca-listen=:4080"
         - "--cert=/var/athenz/server/server.cert"
-        - "--dns-suffix=example.cloud"
         - "--key=/var/athenz/server/server.key"
         - "--listen=:4443"
         - "--root-ca-cert=/var/athenz/root-ca/cert"
@@ -33,3 +32,4 @@ spec:
         volumeMounts:
         - { name: "root-ca", mountPath: "/var/athenz/root-ca", readOnly: true }
         - { name: "tls", mountPath: "/var/athenz/server", readOnly: true }
+        - { name: config-volume, mountPath: /var/cluster, readOnly: true}

@@ -53,28 +53,24 @@ func (p *params) Close() error {
 
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr              = util.EnvOrDefault("ADDR", "unix:///var/athenz/agent/agent.sock")
-		clientKeyFile     = util.EnvOrDefault("KEY_FILE", "/var/athenz/secrets/server.key")
-		clientCertFile    = util.EnvOrDefault("CERT_FILE", "/var/athenz/secrets/server.cert")
-		providerService   = util.EnvOrDefault("PROVIDER_SERVICE", "k8s.athenz.callback")
-		shutdownGrace     = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
-		podEndpoint       = util.EnvOrDefault("POD_ENDPOINT", "http://:10255")
-		podServiceTimeout = util.EnvOrDefault("POD_TIMEOUT", "10s")
-		jwtEndpoint       = util.EnvOrDefault("JWT_ENDPOINT", "https://jwt-service.kube-system:4443/v1")
-		jwtServiceTimeout = util.EnvOrDefault("JWT_TIMEOUT", "10s")
-		ztsEndpoint       = util.EnvOrDefault("ZTS_ENDPOINT", "https://mock-athenz.kube-system/zts/v1")
+		addr              = util.EnvOrDefault("ADDR", "")
+		clientKeyFile     = util.EnvOrDefault("KEY_FILE", "")
+		clientCertFile    = util.EnvOrDefault("CERT_FILE", "")
+		podEndpoint       = util.EnvOrDefault("POD_ENDPOINT", "")
+		jwtEndpoint       = util.EnvOrDefault("JWT_ENDPOINT", "")
 		driverSource      = util.EnvOrDefault("DRIVER_SOURCE", "/usr/bin/athenz-volume-driver")
 		driverTarget      = util.EnvOrDefault("DRIVER_TARGET", "/drivers/athenz-volume-driver")
+		podServiceTimeout = util.EnvOrDefault("POD_TIMEOUT", "10s")
+		jwtServiceTimeout = util.EnvOrDefault("JWT_TIMEOUT", "10s")
+		shutdownGrace     = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "listen", addr, "unix socket or TCP port to listen")
 	f.StringVar(&podEndpoint, "pod-endpoint", podEndpoint, "URL for kubelet read service")
 	f.StringVar(&jwtEndpoint, "jwt-endpoint", jwtEndpoint, "URL for JWT service including version path")
-	f.StringVar(&ztsEndpoint, "zts-endpoint", ztsEndpoint, "URL for ZTS service including version path")
 	f.StringVar(&clientKeyFile, "key", clientKeyFile, "path to client TLS key")
 	f.StringVar(&clientCertFile, "cert", clientCertFile, "path to client TLS cert")
-	f.StringVar(&providerService, "provider-service", providerService, "name of Athenz callback service")
 	f.StringVar(&jwtServiceTimeout, "jwt-service-timeout", jwtServiceTimeout, "service timeout for JWT service")
 	f.StringVar(&podServiceTimeout, "pod-service-timeout", podServiceTimeout, "service timeout for pod service")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
@@ -96,6 +92,16 @@ func parseFlags(program string, args []string) (*params, error) {
 	if showVersion {
 		fmt.Println(getVersion())
 		return nil, errEarlyExit
+	}
+
+	if err := util.CheckFields("arguments", map[string]bool{
+		"listen":       addr == "",
+		"key":          clientKeyFile == "",
+		"cert":         clientCertFile == "",
+		"pod-endpoint": podEndpoint == "",
+		"jwt-endpoint": jwtEndpoint == "",
+	}); err != nil {
+		return nil, err
 	}
 
 	sg, err := time.ParseDuration(shutdownGrace)
@@ -144,9 +150,9 @@ func parseFlags(program string, args []string) (*params, error) {
 	handler, err := ident.NewHandler(apiVersion, ident.HandlerConfig{
 		Signer:          client.GetJWT,
 		AttrProvider:    l.getPodAttributes,
-		ZTSEndpoint:     ztsEndpoint,
+		ZTSEndpoint:     cc.ZTSEndpoint,
 		ClusterConfig:   cc,
-		ProviderService: providerService,
+		ProviderService: cc.ProviderService,
 		DNSSuffix:       cc.AthenzDNSSuffix,
 	})
 	if err != nil {

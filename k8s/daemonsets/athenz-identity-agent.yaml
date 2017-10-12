@@ -33,8 +33,6 @@ spec:
         - "--key=/var/athenz/node/identity/service.key"
         - "--listen=unix:///var/athenz/agent/agent.sock"
         - "--pod-endpoint=http://${NODE_NAME}:10255"
-        - "--provider-service=k8s.athenz.callback"
-        - "--zts-endpoint=https://mock-athenz.kube-system.svc.cluster.local/zts/v1"
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
         - { name: "driver-dir", mountPath: "/driver-mount" }
