@@ -160,6 +160,21 @@ kubectl --namespace=${NS} apply -f deployments/athenz-jwt-service.yaml
 section "Setup identity agent"
 kubectl --namespace=${NS} apply -f daemonsets/athenz-identity-agent.yaml
 
+section "Setup athenz callback"
+
+kubectl --namespace=${NS} apply -f services/athenz-callback.yaml
+
+if [[ ! -f athenz-callback.pem ]]
+then
+    openssl genrsa -out athenz-callback.pem 2048
+    openssl rsa -in athenz-callback.pem -outform PEM -pubout -out athenz-callback.pub.pem
+    kubectl --namespace=${NS} create secret generic athenz-callback-identity --from-literal="service.key=`cat athenz-callback.pem`" --from-literal="service.version=v1"
+fi
+
+athenz-write-zts-config | kubectl --namespace=${NS} apply -f -
+kubectl --namespace=${NS} apply -f deployments/athenz-callback.yaml
+
+
 section Setup initializer
 kubectl --namespace=${NS} apply -f configmaps/athenz-initializer.yaml
 kubectl --namespace=${NS} apply -f deployments/athenz-initializer.yaml
@@ -167,13 +182,8 @@ kubectl --namespace=${NS} apply -f deployments/athenz-initializer.yaml
 kubectl --namespace=${SNS} apply -f initializer-configurations/athenz-initializer.yaml
 
 kubectl --namespace=${UNS} apply -f app/service-account.yaml
-#### kubectl --namespace=${UNS} apply -f app/test-app-pod.yaml
-
-exit 0
+echo Set up the test pod manually, this script does not do that
 
 
-# create the remaining objects
-kubectl --namespace=${NS} apply -f deployments/athenz-callback.yaml
-kubectl --namespace=${NS} apply -f services/athenz-callback.yaml
 
 

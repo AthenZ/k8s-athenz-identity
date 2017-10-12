@@ -15,10 +15,11 @@ spec:
       serviceAccountName: athenz-callback
       volumes:
       - { name: config-volume, configMap: { name: athenz-config } }
-      - { name: "sign-public-dir", secret: { secretName: "athenz-signing-public" } }
-      - { name: "service-identity-dir", secret: { secretName: "athenz-callback-identity" } }
-      - { name: "tlscerts", emptyDir: {} }
-      - { name: "ntoken", emptyDir: {} }
+      - { name: zts-config-volume, configMap: { name: mock-zts-config } }
+      - { name: sign-public-dir, secret: { secretName: athenz-signing-public } }
+      - { name: service-identity-dir, secret: { secretName: athenz-callback-identity } }
+      - { name: tlscerts, emptyDir: {} }
+      - { name: ntoken, emptyDir: {} }
 
       initContainers:
       - name: sia-init
@@ -27,15 +28,17 @@ spec:
         args:
         - "--mode=init"
         - "--identity-dir=/var/tls/athenz/private"
-        - "--cert-file=/var/tls/athenz/public/service.cert"
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
         env:
-        - { name: "NAMESPACE", valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
-        - { name: "ACCOUNT", valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
+        - { name: NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: ACCOUNT, valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
-        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
-        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
-        - { name: "ntoken", mountPath: "/tokens", readOnly: false }
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: false }
+        - { name: ntoken, mountPath: /tokens, readOnly: false }
 
       containers:
       - name: sia-refresh
@@ -44,27 +47,32 @@ spec:
         args:
         - "--mode=refresh"
         - "--identity-dir=/var/tls/athenz/private"
-        - "--cert-file=/var/tls/athenz/public/service.cert"
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
         env:
-        - { name: "NAMESPACE", valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
-        - { name: "ACCOUNT", valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
+        - { name: NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: ACCOUNT, valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
-        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
-        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
-        - { name: "ntoken", mountPath: "/tokens", readOnly: false }
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: false }
+        - { name: ntoken, mountPath: /tokens, readOnly: false }
 
       - name: main
         image: local/k8s-athenz-callback:latest
         imagePullPolicy: Never
         args:
+        - "--cert=/var/tls/athenz/public/service.cert"
+        - "--key=/var/tls/athenz/private/service.key"
+        - "--listen=:4443"
         - "--sign-pub-dir=/var/keys/public"
-        - "--tls-cert=/var/tls/athenz/public/service.cert"
-        - "--tls-key=/var/tls/athenz/private/service.key"
+        - "--zts-name=Athenz"
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
-        - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
-        - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: true }
-        - { name: "ntoken", mountPath: "/tokens", readOnly: true }
-        - { name: "sign-public-dir", mountPath: "/var/keys/public", readOnly: true }
+        - { name: zts-config-volume, mountPath: /var/zts, readOnly: true}
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: true }
+        - { name: ntoken, mountPath: /tokens, readOnly: true }
+        - { name: sign-public-dir, mountPath: /var/keys/public, readOnly: true }
 

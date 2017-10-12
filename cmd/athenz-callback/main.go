@@ -57,7 +57,6 @@ func (p *params) Close() error {
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
 		addr          = util.EnvOrDefault("ADDR", ":4443")
-		adminDomain   = util.EnvOrDefault("ADMIN_DOMAIN", "k8s.admin")
 		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
 		certFile      = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
 		publicKeyDir  = util.EnvOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
@@ -70,7 +69,6 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	f.StringVar(&keyFile, "key", keyFile, "path to key file")
 	f.StringVar(&certFile, "cert", certFile, "path to cert file")
 	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
-	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
 	f.StringVar(&ztsCommonName, "zts-name", ztsCommonName, "common name to verify in Athenz TLS cert")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	cp := config.CmdLine(f)

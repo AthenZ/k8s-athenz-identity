@@ -13,19 +13,10 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
+	"github.com/yahoo/k8s-athenz-identity/devel/mock"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
-
-type PublicKey struct {
-	Service string `json:"service"`
-	Version string `json:"version"`
-	PEM     string `json:"pem"`
-}
-
-type Config struct {
-	PublicKeys        []PublicKey       `json:"public-keys"`
-	ProviderEndpoints map[string]string `json:"provider-endpoints"`
-}
 
 type InstanceRefreshRequest struct {
 	Csr        string `json:"csr"`
@@ -76,6 +67,7 @@ type refreshInput struct {
 
 type zts struct {
 	authHeader string
+	config     *mock.ZTSConfig
 	caKey      crypto.PrivateKey
 	caCert     *x509.Certificate
 	caKeyPEM   []byte
@@ -83,19 +75,20 @@ type zts struct {
 	dnsSuffix  string
 }
 
-func newZTS(authHeader string, caCertPEM, caKeyPEM []byte, dnsSuffix string) (*zts, error) {
+func newZTS(caCertPEM, caKeyPEM []byte, cc *config.ClusterConfiguration, zc *mock.ZTSConfig) (*zts, error) {
 	_, key, err := util.PrivateKeyFromPEMBytes(caKeyPEM)
 	if err != nil {
 		return nil, err
 	}
 	cert, err := loadCert(caCertPEM)
 	return &zts{
-		authHeader: authHeader,
+		authHeader: cc.AuthHeader,
+		config:     zc,
 		caKey:      key,
 		caCert:     cert,
 		caKeyPEM:   caKeyPEM,
 		caCertPEM:  caCertPEM,
-		dnsSuffix:  dnsSuffix,
+		dnsSuffix:  cc.AthenzDNSSuffix,
 	}, nil
 }
 

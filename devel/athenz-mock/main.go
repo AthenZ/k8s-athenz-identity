@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ghodss/yaml"
+	"github.com/yahoo/k8s-athenz-identity/devel/mock"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
@@ -53,21 +55,21 @@ func (p *params) Close() error {
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		addr          = util.EnvOrDefault("ADDR", ":4443")
-		caAddr        = util.EnvOrDefault("CA_ADDR", ":4080")
 		rootKeyFile   = util.EnvOrDefault("ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
 		rootCertFile  = util.EnvOrDefault("ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
 		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/athenz/server/server.key")
 		certFile      = util.EnvOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		ztsConfig     = util.EnvOrDefault("ZTS_CONFIG", "/var/zts/config.yaml")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "listen", addr, "[<ip>]:<port> to listen on")
-	f.StringVar(&caAddr, "ca-listen", caAddr, "[<ip>]:<port> to serve root CA from /ca path")
 	f.StringVar(&rootKeyFile, "root-ca-key", rootKeyFile, "path to root CA TLS key")
 	f.StringVar(&rootCertFile, "root-ca-cert", rootCertFile, "path to root CA TLS cert")
 	f.StringVar(&keyFile, "key", keyFile, "path to TLS key")
 	f.StringVar(&certFile, "cert", certFile, "path to TLS cert")
+	f.StringVar(&ztsConfig, "zts-config", ztsConfig, "path to ZTS config file")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	cp := config.CmdLine(f)
 
@@ -87,13 +89,17 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, errEarlyExit
 	}
 
-	sg, err := time.ParseDuration(shutdownGrace)
-	if err != nil {
-		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
-	}
-
 	cc, err := cp()
 	if err != nil {
+		return nil, err
+	}
+
+	b, err := ioutil.ReadFile(ztsConfig)
+	if err != nil {
+		return nil, err
+	}
+	var zc mock.ZTSConfig
+	if err := yaml.Unmarshal(b, &zc); err != nil {
 		return nil, err
 	}
 
@@ -105,7 +111,13 @@ func parseFlags(program string, args []string) (*params, error) {
 	if err != nil {
 		return nil, err
 	}
-	z, err := newZTS(cc.AuthHeader, rootCertBytes, rootKeyBytes, cc.AthenzDNSSuffix)
+
+	sg, err := time.ParseDuration(shutdownGrace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
+	}
+
+	z, err := newZTS(rootCertBytes, rootKeyBytes, cc, &zc)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +126,6 @@ func parseFlags(program string, args []string) (*params, error) {
 		addr:          addr,
 		keyFile:       keyFile,
 		certFile:      certFile,
-		caAddr:        caAddr,
 		handler:       z.handler(ztsPath),
 		shutdownGrace: sg,
 	}, nil
