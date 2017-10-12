@@ -1,4 +1,4 @@
-package util
+package tlsutil
 
 import (
 	"crypto/tls"
@@ -15,9 +15,9 @@ var defaultPollInterval = 5 * time.Minute // default that can be customized in t
 
 type LogFn func(format string, args ...interface{})
 
-// CertReloader reloads the (key, cert) pair from the filesystem when
+// certReloader reloads the (key, cert) pair from the filesystem when
 // the cert file is updated.
-type CertReloader struct {
+type certReloader struct {
 	l        sync.RWMutex
 	certFile string
 	keyFile  string
@@ -28,7 +28,7 @@ type CertReloader struct {
 }
 
 // GetLatestCertificate returns the latest known certificate.
-func (w *CertReloader) GetLatestCertificate() (*tls.Certificate, error) {
+func (w *certReloader) GetLatestCertificate() (*tls.Certificate, error) {
 	w.l.RLock()
 	c := w.cert
 	w.l.RUnlock()
@@ -36,12 +36,12 @@ func (w *CertReloader) GetLatestCertificate() (*tls.Certificate, error) {
 }
 
 // Close stops the background refresh.
-func (w *CertReloader) Close() error {
+func (w *certReloader) Close() error {
 	w.stop <- struct{}{}
 	return nil
 }
 
-func (w *CertReloader) maybeReload() error {
+func (w *certReloader) maybeReload() error {
 	st, err := os.Stat(w.certFile)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("unable to stat %s", w.certFile))
@@ -61,7 +61,7 @@ func (w *CertReloader) maybeReload() error {
 	return nil
 }
 
-func (w *CertReloader) pollRefresh() error {
+func (w *certReloader) pollRefresh() error {
 	poll := time.NewTicker(time.Duration(defaultPollInterval))
 	defer poll.Stop()
 	for {
@@ -76,20 +76,20 @@ func (w *CertReloader) pollRefresh() error {
 	}
 }
 
-// ReloadConfig contains the config for cert reload.
-type ReloadConfig struct {
+// reloadConfig contains the config for cert reload.
+type reloadConfig struct {
 	CertFile string // the cert file
 	KeyFile  string // the key file
 	Logger   LogFn  // custom log function for errors, optional
 }
 
-// NewCertReloader returns a CertReloader that reloads the (key, cert) pair whenever
+// newCertReloader returns a certReloader that reloads the (key, cert) pair whenever
 // the cert file changes on the filesystem.
-func NewCertReloader(config ReloadConfig) (*CertReloader, error) {
+func newCertReloader(config reloadConfig) (*certReloader, error) {
 	if config.Logger == nil {
 		config.Logger = log.Printf
 	}
-	r := &CertReloader{
+	r := &certReloader{
 		certFile: config.CertFile,
 		keyFile:  config.KeyFile,
 		logger:   config.Logger,

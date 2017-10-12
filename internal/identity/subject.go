@@ -4,44 +4,60 @@ import (
 	"fmt"
 	"net/url"
 
+	"k8s.io/api/core/v1"
+
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 const (
-	scheme       = "pod"
-	paramDomain  = "d"
-	paramService = "s"
+	scheme         = "pod"
+	paramDomain    = "d"
+	paramService   = "n"
+	paramIP        = "i"
+	paramServiceIP = "s"
 )
 
-// PodAttributes is the set of pod attributes that need to be verified in the flow.
-type PodAttributes struct {
-	ID      string
-	Domain  string
-	Service string
+// PodSubject is the set of pod attributes that need to be verified in the flow.
+type PodSubject struct {
+	ID        string
+	Domain    string
+	Service   string
+	IP        string
+	ServiceIP string
 }
 
-func (s *PodAttributes) assertValid() error {
-	return util.CheckFields("PodAttributes", map[string]bool{
+func (s *PodSubject) assertValid() error {
+	return util.CheckFields("PodSubject", map[string]bool{
 		"ID":      s.ID == "",
 		"Domain":  s.Domain == "",
 		"Service": s.Service == "",
+		"IP":      s.IP == "",
 	})
 }
 
-func (s *PodAttributes) toURI() (string, error) {
+func (s *PodSubject) toURI() (string, error) {
+	esc := url.QueryEscape
 	if err := s.assertValid(); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s:%s?%s=%s&%s=%s",
+	suffix := ""
+	if s.ServiceIP != "" {
+		suffix = fmt.Sprintf("&%s=%s", paramServiceIP, esc(s.ServiceIP))
+	}
+	return fmt.Sprintf("%s:%s?%s=%s&%s=%s&%s=%s%s",
 			scheme,
 			s.ID,
-			paramDomain, s.Domain,
-			paramService, s.Service),
+			paramDomain, esc(s.Domain),
+			paramService, esc(s.Service),
+			paramIP, esc(s.IP),
+			suffix,
+		),
 		nil
 }
 
-func (s *PodAttributes) fromURI(u string) error {
+func (s *PodSubject) fromURI(u string) error {
 	uri, err := url.Parse(u)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("uri %q parse error", u))
@@ -53,11 +69,13 @@ func (s *PodAttributes) fromURI(u string) error {
 	s.ID = uri.Opaque
 	s.Domain = q.Get(paramDomain)
 	s.Service = q.Get(paramService)
+	s.IP = q.Get(paramIP)
+	s.ServiceIP = q.Get(paramServiceIP)
 	return s.assertValid()
 }
 
-func verifySubjectURI(u string, provider AttributeProvider) (*PodAttributes, error) {
-	attrs := &PodAttributes{}
+func verifySubjectURI(u string, provider AttributeProvider) (*PodSubject, error) {
+	attrs := &PodSubject{}
 	err := attrs.fromURI(u)
 	if err != nil {
 		return nil, err
@@ -72,4 +90,39 @@ func verifySubjectURI(u string, provider AttributeProvider) (*PodAttributes, err
 		return nil, fmt.Errorf("attribute mismatch want %+v, got %+v", expectedAttrs, attrs)
 	}
 	return attrs, nil
+}
+
+type ServiceIPProvider func(domain, service string) (string, error)
+
+type Mapper struct {
+	provider ServiceIPProvider
+	config   config.ClusterConfiguration
+}
+
+func NewMapper(c config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
+	return &Mapper{
+		config:   c,
+		provider: p,
+	}
+}
+
+// GetSubject maps a pod to a subject.
+func (m *Mapper) GetSubject(pod *v1.Pod) (*PodSubject, error) {
+	domain := m.config.NamespaceToDomain(pod.Namespace)
+	service := pod.Spec.ServiceAccountName
+	var sip string
+	var err error
+	if m.provider != nil {
+		sip, err = m.provider(domain, service)
+		if err != nil {
+			return nil, errors.Wrap(err, "service ip provider")
+		}
+	}
+	return &PodSubject{
+		ID:        fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
+		Domain:    domain,
+		Service:   pod.Spec.ServiceAccountName,
+		IP:        pod.Status.PodIP,
+		ServiceIP: sip,
+	}, nil
 }

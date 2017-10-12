@@ -4,11 +4,10 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/json"
-	"net/http"
-	"strings"
-
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"strings"
 
 	"github.com/dimfeld/httptreemux"
 	"github.com/pkg/errors"
@@ -65,25 +64,27 @@ type refreshInput struct {
 }
 
 type zts struct {
-	caKey     crypto.PrivateKey
-	caCert    *x509.Certificate
-	caKeyPEM  []byte
-	caCertPEM []byte
-	dnsSuffix string
+	authHeader string
+	caKey      crypto.PrivateKey
+	caCert     *x509.Certificate
+	caKeyPEM   []byte
+	caCertPEM  []byte
+	dnsSuffix  string
 }
 
-func newZTS(caCertPEM, caKeyPEM []byte, dnsSuffix string) (*zts, error) {
+func newZTS(authHeader string, caCertPEM, caKeyPEM []byte, dnsSuffix string) (*zts, error) {
 	_, key, err := util.PrivateKeyFromPEMBytes(caKeyPEM)
 	if err != nil {
 		return nil, err
 	}
 	cert, err := loadCert(caCertPEM)
 	return &zts{
-		caKey:     key,
-		caCert:    cert,
-		caKeyPEM:  caKeyPEM,
-		caCertPEM: caCertPEM,
-		dnsSuffix: dnsSuffix,
+		authHeader: authHeader,
+		caKey:      key,
+		caCert:     cert,
+		caKeyPEM:   caKeyPEM,
+		caCertPEM:  caCertPEM,
+		dnsSuffix:  dnsSuffix,
 	}, nil
 }
 

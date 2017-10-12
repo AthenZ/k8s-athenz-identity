@@ -11,22 +11,21 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/dimfeld/httptreemux"
+	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/services"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 var errEarlyExit = fmt.Errorf("early exit")
+
+const apiVersionPrefix = "/v1"
 
 // Version gets set by the build script via LDFLAGS
 var Version string
@@ -41,9 +40,9 @@ func getVersion() string {
 type params struct {
 	addr          string
 	handler       http.Handler
-	shutdownGrace time.Duration
 	tls           *tls.Config
 	closers       []io.Closer
+	shutdownGrace time.Duration
 }
 
 func (p *params) Close() error {
@@ -61,24 +60,26 @@ func envOrDefault(name string, defaultValue string) string {
 	return v
 }
 
-func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
+func parseFlags(program string, args []string) (*params, error) {
 	var (
 		addr          = envOrDefault("ADDR", ":4443")
-		adminDomain   = envOrDefault("ADMIN_DOMAIN", "k8s.admin")
+		signingKeyDir = envOrDefault("PRIVATE_KEYS_DIR", "/var/keys/private")
 		keyFile       = envOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
 		certFile      = envOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
-		caCertFile    = envOrDefault("CA_CERT_FILE", "")
-		publicKeyDir  = envOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
+		trustService  = envOrDefault("IDENTITY_SERVICE", "athenz-identity-agent.k8s-admin.svc.cluster.local")
 		shutdownGrace = envOrDefault("SHUTDOWN_GRACE", "10s")
+		tokenExpiry   = envOrDefault("TOKEN_EXPIRY", "5m")
+		configURL     = envOrDefault("CONFIG_URL", "http://athenz-config.kube-system/v1/cluster")
 	)
-
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
-	f.StringVar(&addr, "listen", addr, "[<ip>]:<port> to listen on")
-	f.StringVar(&keyFile, "key", keyFile, "path to key file")
-	f.StringVar(&certFile, "cert", certFile, "path to cert file")
-	f.StringVar(&caCertFile, "ca-cert", caCertFile, "path to CA cert")
-	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
-	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
+
+	f.StringVar(&addr, "listen", addr, "listen address")
+	f.StringVar(&signingKeyDir, "sign-key-dir", signingKeyDir, "directory containing private signing keys")
+	f.StringVar(&keyFile, "key", keyFile, "path to key")
+	f.StringVar(&certFile, "cert", certFile, "path to cert")
+	f.StringVar(&trustService, "identity-service", trustService, "service allowed to mint JWTs")
+	f.StringVar(&tokenExpiry, "token-expiry", tokenExpiry, "token expiry for JWTs")
+	f.StringVar(&configURL, "config", configURL, "cluster config URL or local file path")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 
 	var showVersion bool
@@ -86,9 +87,6 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 
 	err := f.Parse(args)
 	if err != nil {
-		if err == flag.ErrHelp {
-			err = errEarlyExit
-		}
 		return nil, err
 	}
 
@@ -97,78 +95,66 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, errEarlyExit
 	}
 
-	sg, err := time.ParseDuration(shutdownGrace)
+	privateSource := keys.NewPrivateKeySource(signingKeyDir, services.AthensInitSecret)
+
+	cc, err := config.Load(configURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
+		return nil, err
 	}
-
-	if clusterConfig == nil {
-		clusterConfig, err = rest.InClusterConfig()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	cs, err := kubernetes.NewForConfig(clusterConfig)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create clientset, %v", err)
-	}
-
-	publicSource := keys.NewPublicKeySource(publicKeyDir, services.AthensInitSecret)
-	mapper := identity.NewMapper(config.ClusterConfiguration{}, nil) // TODO: FIX ARGUMENTS
-	verifier, err := identity.NewVerifier(identity.VerifierConfig{
-		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
-			parts := strings.SplitN(podID, "/", 2)
-			if len(parts) < 2 {
-				return nil, fmt.Errorf("invalid pod id %q, want namespace/name", podID)
-			}
-			pod, err := cs.CoreV1().Pods(parts[0]).Get(parts[1], meta_v1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			return mapper.GetSubject(pod)
-		},
-		PublicKeyProvider: publicSource.PublicKey,
-	})
+	servicePool, err := cc.TrustRoot(config.ServiceRoot)
 	if err != nil {
 		return nil, err
 	}
 
 	config, closer, err := tlsutil.ServerConfig(tlsutil.Config{
-		KeyFile:    keyFile,
-		CertFile:   certFile,
-		CACertFile: caCertFile,
+		KeyFile:  keyFile,
+		CertFile: certFile,
 	})
 	if err != nil {
 		return nil, err
 	}
+	config.ClientCAs = servicePool
+	// TODO: make thios stronger and only allow the identity agent to connect
 
-	return &params{
-		addr: addr,
-		handler: &handler{
-			verifier: verifier,
-		},
+	sg, err := time.ParseDuration(shutdownGrace)
+	if err != nil {
+		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
+	}
+	te, err := time.ParseDuration(tokenExpiry)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token expiry %q, %v", tokenExpiry, err)
+	}
+
+	sc := identity.SerializerConfig{
+		TokenExpiry: te,
+		KeyProvider: privateSource.SigningKey,
+	}
+	ser, err := identity.NewSerializer(sc)
+	if err != nil {
+		return nil, errors.Wrap(err, "serializer creation")
+	}
+	p := &params{
+		addr:          addr,
+		handler:       jwt.NewHandler(apiVersionPrefix, ser.IdentityDoc),
 		tls:           config,
-		shutdownGrace: sg,
 		closers:       []io.Closer{closer},
-	}, nil
+		shutdownGrace: sg,
+	}
+	return p, err
 }
 
-func run(config *rest.Config, program string, args []string, stopChan <-chan struct{}) error {
-	params, err := parseFlags(config, program, args)
+func run(program string, args []string, stopChan <-chan struct{}) error {
+	params, err := parseFlags(program, args)
 	if err != nil {
 		return err
 	}
 	defer params.Close()
-
-	mux := httptreemux.New()
-	mux.POST("/identity", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
-		params.handler.ServeHTTP(w, r)
-	})
-	mux.GET("/healthz", func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
+	mux := http.NewServeMux()
+	mux.Handle(apiVersionPrefix+"/", params.handler)
+	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain;charset=utf8")
 		io.WriteString(w, "ok\n")
-	})
+	}))
 
 	server := &http.Server{
 		Addr:      params.addr,
@@ -196,6 +182,7 @@ func run(config *rest.Config, program string, args []string, stopChan <-chan str
 			server.Shutdown(ctx)
 		}
 	}
+
 }
 
 func main() {
@@ -208,8 +195,7 @@ func main() {
 		log.Println("shutting down...")
 		close(stopChan)
 	}()
-
-	err := run(nil, filepath.Base(os.Args[0]), os.Args[1:], stopChan)
+	err := run(filepath.Base(os.Args[0]), os.Args[1:], stopChan)
 	if err != nil && err != errEarlyExit {
 		log.Fatalln("[FATAL]", err)
 	}

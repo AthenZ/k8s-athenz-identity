@@ -6,6 +6,12 @@ spec:
   selector:
     app: mock-athenz
   ports:
-  - protocol: TCP
+  - name: secure
+    protocol: TCP
+    port: 443
+    targetPort: 4443
+  - name: insecure
+    protocol: TCP
     port: 80
-    targetPort: 80
+    targetPort: 4080
+

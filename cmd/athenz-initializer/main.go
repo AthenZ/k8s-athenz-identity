@@ -12,12 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yahoo/k8s-athenz-identity/internal/common"
-	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/keys"
-	"github.com/yahoo/k8s-athenz-identity/internal/util"
-	"gopkg.in/yaml.v1"
-	"k8s.io/api/core/v1"
+	"github.com/ghodss/yaml"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -74,29 +69,24 @@ func envOrDefault(name string, defaultValue string) string {
 
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
-		providerService = envOrDefault("ATHENZ_INIT_PROVIDER_SERVICE", "")
-		namespace       = envOrDefault("ATHENZ_INIT_CONFIG_NAMESPACE", "default")
-		configMap       = envOrDefault("ATHENZ_INIT_CONFIG_MAP", "athenz-initializer")
-		keyDir          = envOrDefault("ATHENZ_INIT_PRIVATE_KEYS_DIR", "/var/keys/private")
-		dnsSuffix       = envOrDefault("ATHENZ_INIT_DNS_SUFFIX", "")
-		adminDomain     = envOrDefault("ATHENZ_INIT_ADMIN_DOMAIN", "k8s.admin")
-		resyncInterval  = envOrDefault("ATHENS_INIT_RESYNC_INTERVAL", "60s")
+		namespace    = envOrDefault("CONFIG_NAMESPACE", "default")
+		configMap    = envOrDefault("CONFIG_MAP", "athenz-initializer")
+		syncInterval = envOrDefault("SYNC_INTERVAL", "60s")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
-	f.StringVar(&providerService, "provider", providerService, "fully qualified provider service, required")
-	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix, required")
-	f.StringVar(&namespace, "namespace", namespace, "The configuration namespace")
-	f.StringVar(&configMap, "configmap", configMap, "The athenz initializer configuration configmap")
-	f.StringVar(&keyDir, "sign-key-dir", keyDir, "directory containing private signing keys")
-	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
-	f.StringVar(&resyncInterval, "sync-interval", resyncInterval, "watcher re-sync interval")
+	f.StringVar(&namespace, "config-namespace", namespace, "configuration namespace")
+	f.StringVar(&configMap, "config-map", configMap, "athenz initializer configuration config map")
+	f.StringVar(&syncInterval, "sync-interval", syncInterval, "watcher re-sync interval")
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
 
 	err := f.Parse(args)
 	if err != nil {
+		if err == flag.ErrHelp {
+			err = errEarlyExit
+		}
 		return nil, err
 	}
 
@@ -105,16 +95,9 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, errEarlyExit
 	}
 
-	if err := util.CheckFields("arguments", map[string]bool{
-		"provider":   providerService == "",
-		"dns-suffix": dnsSuffix == "",
-	}); err != nil {
-		return nil, err
-	}
-
-	ri, err := time.ParseDuration(resyncInterval)
+	ri, err := time.ParseDuration(syncInterval)
 	if err != nil {
-		return nil, fmt.Errorf("invalid resync interval %q, %v", resyncInterval, err)
+		return nil, fmt.Errorf("invalid resync interval %q, %v", syncInterval, err)
 	}
 
 	if clusterConfig == nil {
@@ -134,26 +117,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, err
 	}
 
-	privateSource := keys.NewPrivateKeySource(keyDir, common.AthensInitSecret)
-
-	attributeSerializer, err := identity.NewSerializer(identity.SerializerConfig{
-		TokenExpiry:     15 * time.Minute,
-		KeyProvider:     privateSource.SigningKey,
-		DNSSuffix:       dnsSuffix,
-		ProviderService: providerService,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	a := common.Attributes{AdminDomain: adminDomain}
-	initer, err := newInitializer(*initConfig, func(pod *v1.Pod) (map[string]string, error) {
-		attrs, err := a.Pod2Attributes(pod)
-		if err != nil {
-			return nil, err
-		}
-		return attributeSerializer.Serialize(attrs)
-	})
+	initer, err := newInitializer(*initConfig)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net"
 
 	"github.com/pkg/errors"
@@ -26,22 +25,6 @@ const (
 type CSROptions struct {
 	DNSNames    []string
 	IPAddresses []net.IP
-}
-
-func LoadCACerts(file string) (*x509.CertPool, error) {
-	var pool *x509.CertPool
-	if file == "" {
-		return pool, nil
-	}
-	b, err := ioutil.ReadFile(file)
-	if err != nil {
-		return nil, fmt.Errorf("read CA cert %v", err)
-	}
-	pool = x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(b) {
-		return nil, fmt.Errorf("error loading any cert from %s", file)
-	}
-	return pool, nil
 }
 
 func generateKey() (*rsa.PrivateKey, []byte, error) {

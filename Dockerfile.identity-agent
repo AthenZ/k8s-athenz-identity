@@ -1,0 +1,6 @@
+FROM ubuntu
+ADD ./_build/bin/athenz-identity-agent /usr/bin/athenz-identity-agent
+ADD ./_build/bin/athenz-volume-driver /usr/bin/athenz-volume-driver
+ENTRYPOINT ["/usr/bin/athenz-identity-agent"]
+
+

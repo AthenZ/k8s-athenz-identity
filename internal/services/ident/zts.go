@@ -1,4 +1,4 @@
-package main
+package ident
 
 import (
 	"crypto/tls"
@@ -6,8 +6,10 @@ import (
 	"net"
 	"net/http"
 
+	"crypto/x509"
+
 	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/internal/identity"
+	"github.com/yahoo/k8s-athenz-identity/internal/tlsutil"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -15,16 +17,27 @@ var wantToken = true
 
 type ztsClient struct {
 	endpoint string
+	tls      *tls.Config
 	sanIPs   []net.IP
-	context  identity.Context
+	context  identityContext
 }
 
-func newZTS(endpoint string, context identity.Context, sanIPs []net.IP) *ztsClient {
+func newZTS(endpoint string, pool *x509.CertPool, context identityContext) (*ztsClient, error) {
+	var sanIPs []net.IP
+	for _, str := range context.SANIPs {
+		ip := net.ParseIP(str)
+		if ip == nil {
+			return nil, fmt.Errorf("invalid SAN IP %q", str)
+		}
+	}
+	config := tlsutil.BaseClientConfig()
+	config.RootCAs = pool
 	return &ztsClient{
 		endpoint: endpoint,
+		tls:      config,
 		sanIPs:   sanIPs,
 		context:  context,
-	}
+	}, nil
 }
 
 func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
@@ -35,25 +48,18 @@ func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
 	})
 }
 
-func (z *ztsClient) identity2Creds(identity *zts.InstanceIdentity, keyPEM []byte) (*tls.Certificate, error) {
-	cert, err := tls.X509KeyPair([]byte(identity.X509Certificate), keyPEM)
-	if err != nil {
-		return nil, err
-	}
-	return &cert, nil
-
-}
-
-func (z *ztsClient) getIdentity(identityDoc string) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
-	handle := func(err error) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
-		return nil, nil, nil, err
+func (z *ztsClient) getIdentity(identityDoc string) (*zts.InstanceIdentity, []byte, error) {
+	handle := func(err error) (*zts.InstanceIdentity, []byte, error) {
+		return nil, nil, err
 	}
 	ctx := z.context
 	keyPEM, csrPEM, err := z.generateKeyAndCSR()
 	if err != nil {
 		return handle(err)
 	}
-	client := zts.NewClient(z.endpoint, nil)
+	client := zts.NewClient(z.endpoint, &http.Transport{
+		TLSClientConfig: z.tls,
+	})
 	id, _, err := client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
 		Provider:        zts.ServiceName(ctx.ProviderService),
 		Domain:          zts.DomainName(ctx.Domain),
@@ -65,21 +71,22 @@ func (z *ztsClient) getIdentity(identityDoc string) (*zts.InstanceIdentity, []by
 	if err != nil {
 		return handle(err)
 	}
-	cert, err := z.identity2Creds(id, keyPEM)
-	if err != nil {
-		return handle(err)
-	}
-	return id, keyPEM, cert, err
+	return id, keyPEM, err
 }
 
-func (z *ztsClient) refreshIdentity(cert *tls.Certificate) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
-	handle := func(err error) (*zts.InstanceIdentity, []byte, *tls.Certificate, error) {
-		return nil, nil, nil, err
+func (z *ztsClient) refreshIdentity(certPEM, keyPEM []byte) (*zts.InstanceIdentity, []byte, error) {
+	handle := func(err error) (*zts.InstanceIdentity, []byte, error) {
+		return nil, nil, err
 	}
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		handle(err)
+	}
+
+	cfg := *z.tls
+	cfg.Certificates = []tls.Certificate{cert}
 	client := zts.NewClient(z.endpoint, &http.Transport{
-		TLSClientConfig: &tls.Config{
-			Certificates: []tls.Certificate{*cert},
-		},
+		TLSClientConfig: &cfg,
 	})
 	ctx := z.context
 	keyPEM, csrPEM, err := z.generateKeyAndCSR()
@@ -98,9 +105,5 @@ func (z *ztsClient) refreshIdentity(cert *tls.Certificate) (*zts.InstanceIdentit
 	if err != nil {
 		return handle(err)
 	}
-	newCreds, err := z.identity2Creds(id, keyPEM)
-	if err != nil {
-		return handle(err)
-	}
-	return id, keyPEM, newCreds, err
+	return id, keyPEM, err
 }

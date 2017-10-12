@@ -1,7 +1,8 @@
 package util
 
 import (
-	"io/ioutil"
+	"bytes"
+	"io"
 	"os"
 )
 
@@ -17,10 +18,31 @@ func tmpFile(file string) string {
 	return file + ".tmp"
 }
 
-func (w *Writer) Add(file string, content []byte, perms os.FileMode) error {
-	t := tmpFile(file)
-	w.files = append(w.files, file)
-	return ioutil.WriteFile(t, content, perms)
+func (w *Writer) AddBytes(target string, perms os.FileMode, content []byte) error {
+	return w.AddReader(target, perms, bytes.NewBuffer(content))
+}
+
+func (w *Writer) AddFile(target string, perms os.FileMode, source string) error {
+	f, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return w.AddReader(target, perms, f)
+}
+
+func (w *Writer) AddReader(target string, perms os.FileMode, content io.Reader) error {
+	t := tmpFile(target)
+	f, err := os.OpenFile(t, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, perms)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, content); err != nil {
+		return err
+	}
+	w.files = append(w.files, target)
+	return nil
 }
 
 func (w *Writer) Save() error {

@@ -15,7 +15,9 @@ spec:
     imagePullPolicy: Never
     volumeMounts:
       - { name: "ntoken", mountPath: "/tokens", readOnly: true }
-      #- { name: "tlscerts", mountPath: "/var/athenz/tls", readOnly: true }
+      - { name: "test", mountPath: "/test", readOnly: false }
+      - { name: "tlscerts", mountPath: "/var/athenz/tls", readOnly: true }
   volumes:
   - { name: ntoken, emptyDir: {} }
-  #- { name: tlscerts, emptyDir: {} }
+  - { name: tlscerts, emptyDir: {} }
+  - { name: test, emptyDir: {} }

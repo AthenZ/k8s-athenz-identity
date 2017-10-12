@@ -2,20 +2,20 @@ apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   labels:
-    app: athenz-callback
-  name: athenz-callback
+    app: athenz-jwt-service
+  name: athenz-jwt-service
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: athenz-callback
-      name: athenz-callback
+        app: athenz-jwt-service
+      name: athenz-jwt-service
     spec:
-      serviceAccountName: athenz-callback
+      serviceAccountName: athenz-jwt-service
       volumes:
-      - { name: "sign-public-dir", secret: { secretName: "athenz-signing-public" } }
-      - { name: "service-identity-dir", secret: { secretName: "athenz-callback-identity" } }
+      - { name: "sign-private-dir", secret: { secretName: "athenz-signing-private" } }
+      - { name: "service-identity-dir", secret: { secretName: "athenz-jwt-service-identity" } }
       - { name: "tlscerts", emptyDir: {} }
       - { name: "ntoken", emptyDir: {} }
 
@@ -27,10 +27,12 @@ spec:
         - "--mode=init"
         - "--auth-header=Athenz-Principal-Auth"
         - "--dns-suffix=example.cloud"
-        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
+        - "--endpoint=https://mock-athenz.kube-system.svc.cluster.local/zts/v1"
         - "--identity-dir=/var/tls/athenz/private"
-        - "--cert-file=/var/tls/athenz/public/service.cert"
-        env: [ { name: "ATHENZ_DOMAIN", value: "k8s"}, { "name": "ATHENZ_SERVICE", value: "root" }]
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
+        env: [ { name: "DOMAIN", value: "k8s.admin"}, { "name": "SERVICE", value: "athenz-jwt-service" }]
         volumeMounts:
         - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
         - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
@@ -44,25 +46,28 @@ spec:
         - "--mode=refresh"
         - "--auth-header=Athenz-Principal-Auth"
         - "--dns-suffix=example.cloud"
-        - "--endpoint=http://mock-athenz.kube-system/zts/v1"
+        - "--endpoint=https://mock-athenz.kube-system.svc.cluster.local/zts/v1"
         - "--identity-dir=/var/tls/athenz/private"
-        - "--cert-file=/var/tls/athenz/public/service.cert"
-        env: [ { name: "ATHENZ_DOMAIN", value: "k8s"}, { "name": "ATHENZ_SERVICE", value: "root" }]
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
+        env: [ { name: "DOMAIN", value: "k8s.admin"}, { "name": "SERVICE", value: "athenz-jwt-service" }]
         volumeMounts:
         - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
         - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: false }
         - { name: "ntoken", mountPath: "/tokens", readOnly: false }
 
       - name: main
-        image: local/k8s-athenz-callback:latest
+        image: local/k8s-athenz-jwt-service:latest
         imagePullPolicy: Never
         args:
-        - "--sign-pub-dir=/var/keys/public"
-        - "--tls-cert=/var/tls/athenz/public/service.cert"
-        - "--tls-key=/var/tls/athenz/private/service.key"
+        - "--cert=/var/tls/athenz/public/service.cert"
+        - "--identity-service=athenz-identity-agent.k8s-admin.svc.cluster.local"
+        - "--key=/var/tls/athenz/private/service.key"
+        - "--sign-key-dir=/var/keys/private"
         volumeMounts:
+        - { name: "sign-private-dir", mountPath: "/var/keys/private", readOnly: true }
         - { name: "service-identity-dir", mountPath: "/var/tls/athenz/private", readOnly: true }
         - { name: "tlscerts", mountPath: "/var/tls/athenz/public", readOnly: true }
         - { name: "ntoken", mountPath: "/tokens", readOnly: true }
-        - { name: "sign-public-dir", mountPath: "/var/keys/public", readOnly: true }
 
