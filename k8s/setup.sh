@@ -174,7 +174,8 @@ kubectl --namespace=${NS} apply -f deployments/athenz-initializer.yaml
 kubectl --namespace=${SNS} apply -f initializer-configurations/athenz-initializer.yaml
 
 kubectl --namespace=${UNS} apply -f app/service-account.yaml
-echo Set up the test pod manually, this script does not do that
+kubectl --namespace=${UNS} apply -f app/athenz-test-app-service.yaml
+kubectl --namespace=${UNS} apply -f app/athenz-test-app-deploy.yaml
 
 
 

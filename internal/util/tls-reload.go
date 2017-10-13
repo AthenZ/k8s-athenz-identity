@@ -1,4 +1,4 @@
-package config
+package util
 
 import (
 	"crypto/tls"
@@ -77,7 +77,7 @@ func (w *certReloader) pollRefresh() error {
 }
 
 // reloadConfig contains the config for cert reload.
-type reloadConfig struct {
+type ReloadConfig struct {
 	CertFile string // the cert file
 	KeyFile  string // the key file
 	Logger   LogFn  // custom log function for errors, optional
@@ -85,7 +85,7 @@ type reloadConfig struct {
 
 // newCertReloader returns a certReloader that reloads the (key, cert) pair whenever
 // the cert file changes on the filesystem.
-func newCertReloader(config reloadConfig) (*certReloader, error) {
+func NewCertReloader(config ReloadConfig) (*certReloader, error) {
 	if config.Logger == nil {
 		config.Logger = log.Printf
 	}

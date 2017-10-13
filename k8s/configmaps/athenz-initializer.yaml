@@ -23,7 +23,7 @@ data:
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
         - { name: ntoken,       mountPath: /tokens }
-        - { name: tlscerts,     mountPath: /var/tls/athenz }
+        - { name: tlscerts,     mountPath: /tls }
         - { name: sia-identity, mountPath: /identity }
 
     refreshTemplate: |
@@ -37,5 +37,5 @@ data:
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
         - { name: ntoken,       mountPath: /tokens }
-        - { name: tlscerts,     mountPath: /var/tls/athenz }
+        - { name: tlscerts,     mountPath: /tls }
         - { name: sia-identity, mountPath: /identity }

@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/services"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -136,7 +136,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	}
 	p := &params{
 		addr:          addr,
-		handler:       jwt.NewHandler(apiVersionPrefix, ser.IdentityDoc),
+		handler:       util.NewAccessLogHandler(jwt.NewHandler(apiVersionPrefix, ser.IdentityDoc)),
 		tls:           conf,
 		closers:       []io.Closer{closer},
 		shutdownGrace: sg,

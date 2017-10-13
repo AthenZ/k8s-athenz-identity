@@ -10,8 +10,8 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/clients/go/zts"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -147,7 +147,6 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 	}
 	if subject.ServiceIP != "" {
 		c.SANIPs = append(c.SANIPs, subject.ServiceIP)
-
 	}
 	z, err := newZTS(h.ZTSEndpoint, h.ClusterConfig, c)
 	if err != nil {

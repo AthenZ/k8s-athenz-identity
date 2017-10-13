@@ -17,7 +17,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	"github.com/yahoo/k8s-athenz-identity/devel/mock"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -117,7 +117,17 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
-	z, err := newZTS(rootCertBytes, rootKeyBytes, cc, &zc)
+	// we talk to the provider using our identity and make sure provider
+	// is running with our CA certs
+	clientTLS, closer, err := cc.ClientTLSConfigWithCreds(config.Credentials{
+		KeyFile:  keyFile,
+		CertFile: certFile,
+	}, config.ServiceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	z, err := newZTS(clientTLS, rootCertBytes, rootKeyBytes, cc, &zc)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +136,9 @@ func parseFlags(program string, args []string) (*params, error) {
 		addr:          addr,
 		keyFile:       keyFile,
 		certFile:      certFile,
-		handler:       z.handler(ztsPath),
+		handler:       util.NewAccessLogHandler(z.handler(ztsPath)),
 		shutdownGrace: sg,
+		closers:       []io.Closer{closer},
 	}, nil
 }
 

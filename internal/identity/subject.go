@@ -7,8 +7,9 @@ import (
 	"k8s.io/api/core/v1"
 
 	"github.com/pkg/errors"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"go.corp.yahoo.com/clusterville/log"
 )
 
 const (
@@ -86,6 +87,7 @@ func verifySubjectURI(u string, provider AttributeProvider) (*PodSubject, error)
 		return nil, errors.Wrap(err, fmt.Sprintf("attribute provider for %s", attrs.ID))
 	}
 
+	log.Printf("expected=%+v, actual=%+v\n", *expectedAttrs, *attrs)
 	if *expectedAttrs != *attrs {
 		return nil, fmt.Errorf("attribute mismatch want %+v, got %+v", expectedAttrs, attrs)
 	}
@@ -110,13 +112,9 @@ func NewMapper(c *config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
 func (m *Mapper) GetSubject(pod *v1.Pod) (*PodSubject, error) {
 	domain := m.config.NamespaceToDomain(pod.Namespace)
 	service := pod.Spec.ServiceAccountName
-	var sip string
-	var err error
-	if m.provider != nil {
-		sip, err = m.provider(domain, service)
-		if err != nil {
-			return nil, errors.Wrap(err, "service ip provider")
-		}
+	sip, err := m.provider(domain, service)
+	if err != nil {
+		return nil, errors.Wrap(err, "service ip provider")
 	}
 	return &PodSubject{
 		ID:        fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),

@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -27,6 +27,7 @@ func newZTS(endpoint string, cc *config.ClusterConfiguration, context identityCo
 		if ip == nil {
 			return nil, fmt.Errorf("invalid SAN IP %q", str)
 		}
+		sanIPs = append(sanIPs, ip)
 	}
 	conf, err := cc.ClientTLSConfig(config.AthenzRoot)
 	if err != nil {
@@ -42,7 +43,8 @@ func newZTS(endpoint string, cc *config.ClusterConfiguration, context identityCo
 
 func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
 	ctx := z.context
-	return util.GenerateKeyAndCSR(fmt.Sprintf("%s.%s", ctx.Domain, ctx.Service), util.CSROptions{
+	cn := fmt.Sprintf("%s.%s", ctx.Domain, ctx.Service)
+	return util.GenerateKeyAndCSR(cn, util.CSROptions{
 		DNSNames:    ctx.SANNames,
 		IPAddresses: z.sanIPs,
 	})

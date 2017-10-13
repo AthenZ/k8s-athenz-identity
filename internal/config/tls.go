@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 // standardCipherSuites returns a list of acceptable cipher suites in priority order of use.
@@ -78,7 +79,7 @@ func (c *ClusterConfiguration) ClientTLSConfigWithCreds(creds Credentials, src T
 	if err != nil {
 		return nil, nil, err
 	}
-	reloader, err := newCertReloader(reloadConfig{
+	reloader, err := util.NewCertReloader(util.ReloadConfig{
 		KeyFile:  creds.KeyFile,
 		CertFile: creds.CertFile,
 	})
@@ -102,7 +103,7 @@ func (c *ClusterConfiguration) ServerTLSConfig(creds Credentials, vc VerifyClien
 			return nil, nil, err
 		}
 	}
-	reloader, err := newCertReloader(reloadConfig{
+	reloader, err := util.NewCertReloader(util.ReloadConfig{
 		KeyFile:  creds.KeyFile,
 		CertFile: creds.CertFile,
 	})

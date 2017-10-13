@@ -15,7 +15,7 @@ import (
 func main() {
 	var (
 		providerService  = "k8s.admin.athenz-callback"
-		providerEndpoint = "https://athenz-callback.k8s-admin.svc.cluster.local:4443/v1"
+		providerEndpoint = "https://athenz-callback.k8s-admin.svc.cluster.local:4443"
 		cbService        = "k8s.admin.athenz-callback"
 		cbPublicKey      = "athenz-callback.pub.pem"
 		cbKeyVersion     = "v1"

@@ -1,20 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dimfeld/httptreemux"
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
 	"github.com/yahoo/k8s-athenz-identity/devel/mock"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -67,7 +69,9 @@ type refreshInput struct {
 
 type zts struct {
 	authHeader string
+	cc         *config.ClusterConfiguration
 	config     *mock.ZTSConfig
+	tls        *tls.Config
 	caKey      crypto.PrivateKey
 	caCert     *x509.Certificate
 	caKeyPEM   []byte
@@ -75,7 +79,7 @@ type zts struct {
 	dnsSuffix  string
 }
 
-func newZTS(caCertPEM, caKeyPEM []byte, cc *config.ClusterConfiguration, zc *mock.ZTSConfig) (*zts, error) {
+func newZTS(tls *tls.Config, caCertPEM, caKeyPEM []byte, cc *config.ClusterConfiguration, zc *mock.ZTSConfig) (*zts, error) {
 	_, key, err := util.PrivateKeyFromPEMBytes(caKeyPEM)
 	if err != nil {
 		return nil, err
@@ -83,7 +87,9 @@ func newZTS(caCertPEM, caKeyPEM []byte, cc *config.ClusterConfiguration, zc *moc
 	cert, err := loadCert(caCertPEM)
 	return &zts{
 		authHeader: cc.AuthHeader,
+		cc:         cc,
 		config:     zc,
+		tls:        tls,
 		caKey:      key,
 		caCert:     cert,
 		caKeyPEM:   caKeyPEM,
@@ -97,7 +103,6 @@ func (z *zts) decode(r *http.Request, data interface{}) error {
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("body read error for %s %v", r.Method, r.URL))
 	}
-	log.Printf("body for %s %v,\n%s\n", r.Method, r.URL, b)
 	err = json.Unmarshal(b, data)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("JSON unmarshal error for %s", b))
@@ -182,12 +187,63 @@ func (z *zts) getInstanceRegisterInfo(r *http.Request) (*InstanceRegisterInforma
 	return &in, nil
 }
 
+type instanceConfirmation struct {
+	Provider        string            `json:"provider"`
+	Domain          string            `json:"domain"`
+	Service         string            `json:"service"`
+	AttestationData string            `json:"attestationData"`
+	Attributes      map[string]string `json:"attributes,omitempty"`
+}
+
 func (z *zts) ProviderRegistration(w http.ResponseWriter, r *http.Request) {
 	in, err := z.getInstanceRegisterInfo(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	endpoint := z.config.ProviderEndpoints[in.Provider]
+	if endpoint == "" {
+		http.Error(w, "no provider registered for "+in.Provider, http.StatusBadRequest)
+		return
+	}
+
+	confirm := &instanceConfirmation{
+		Provider:        in.Provider,
+		Domain:          in.Domain,
+		Service:         in.Service,
+		AttestationData: in.AttestationData,
+		Attributes:      map[string]string{}, //TODO: add client IP and SAN IPs as discussed with Athenz team
+	}
+	b, err := json.Marshal(confirm)
+	if err != nil {
+		http.Error(w, "confirmation serialization error", http.StatusInternalServerError)
+		return
+	}
+
+	t := *z.tls
+	pos := strings.LastIndex(in.Provider, ".")
+	pd, ps := in.Provider[:pos], in.Provider[pos+1:]
+	t.ServerName = z.cc.AthenzSANName(pd, ps) // TODO: this needs to be figured out to see if it will work with real Athenz
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &t,
+		},
+	}
+	u := endpoint + "/identity"
+	res, err := client.Post(u, "application/json", bytes.NewBuffer(b))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer res.Body.Close()
+	b, _ = ioutil.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		http.Error(w, fmt.Sprintf("confirmation failed %d, %s", res.StatusCode, b), http.StatusForbidden)
+		return
+	}
+
 	tok, cert, err := z.createCreds(in.Domain, in.Service, []byte(in.Csr))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/ghodss/yaml"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

@@ -66,7 +66,7 @@ spec:
         - "--key=/var/tls/athenz/private/service.key"
         - "--listen=:4443"
         - "--sign-pub-dir=/var/keys/public"
-        - "--zts-name=Athenz"
+        - "--zts-name=mock-athenz.k8s-admin.svc.cluster.local"
         volumeMounts:
         - { name: config-volume, mountPath: /var/cluster, readOnly: true}
         - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }

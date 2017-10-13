@@ -13,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
+	"net"
+
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -133,7 +135,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.ServerName = cc.AthenzSANName(d, s)
+	cfg.ServerName = cc.AthenzSANName(d, s) // TODO: figure out how to get rid of this
 
 	client := jwt.NewClient(jwtEndpoint, &http.Client{
 		Timeout: jt,
@@ -141,10 +143,25 @@ func parseFlags(program string, args []string) (*params, error) {
 			TLSClientConfig: cfg,
 		},
 	})
+	serviceIPProvider := func(domain, service string) (x string, _ error) {
+		defer func() {
+			log.Println("SIP for ", domain, "/", service, "=", x, err)
+		}()
+		ns := cc.DomainToNamespace(domain)
+		host := fmt.Sprintf("%s.%s.%s", service, ns, cc.KubeDNSSuffix)
+		if ips, err := net.LookupIP(host); err == nil {
+			for _, ip := range ips {
+				if ip.To4() != nil {
+					return ip.String(), nil
+				}
+			}
+		}
+		return "", nil
+	}
 	l := &lookup{
 		podEndpoint: os.ExpandEnv(podEndpoint),
 		timeout:     pt,
-		mapper:      identity.NewMapper(cc, nil), //TODO: service IP provider
+		mapper:      identity.NewMapper(cc, serviceIPProvider),
 	}
 
 	handler, err := ident.NewHandler(apiVersion, ident.HandlerConfig{
@@ -160,7 +177,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	}
 	return &params{
 		addr:          addr,
-		handler:       handler,
+		handler:       util.NewAccessLogHandler(handler),
 		shutdownGrace: sg,
 		driverSource:  driverSource,
 		driverTarget:  driverTarget,

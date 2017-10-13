@@ -44,6 +44,7 @@ Discussion points
 TODOs
 ----
 
+* Admission controller that enforces initializer for user apps, does not allow random workloads to use the custom volume driver etc.
 * Ordering of initializer configuration and deployment of initializer still matters. Will be an upgrade issue. Investigate.
 * Dynamic refresh intervals for both control and data plane SIA
 * Deployment strategy for provider callback in the face of network ACLs etc.

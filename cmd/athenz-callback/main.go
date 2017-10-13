@@ -17,11 +17,12 @@ import (
 	"time"
 
 	"github.com/dimfeld/httptreemux"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/services"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -111,8 +112,25 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, fmt.Errorf("unable to create clientset, %v", err)
 	}
 
+	serviceIPProvider := func(domain, service string) (x string, _ error) {
+		defer func() {
+			log.Println("SIP for ", domain, "/", service, "=", x, err)
+		}()
+		ns := cc.DomainToNamespace(domain)
+		svc, err := cs.CoreV1().Services(ns).Get(service, meta_v1.GetOptions{})
+		if err == nil {
+			return svc.Spec.ClusterIP, nil
+		}
+		if e, ok := err.(*errors.StatusError); ok {
+			if e.Status().Code == http.StatusNotFound {
+				return "", nil
+			}
+		}
+		return "", err
+	}
+
 	publicSource := keys.NewPublicKeySource(publicKeyDir, services.AthensInitSecret)
-	mapper := identity.NewMapper(cc, nil) // TODO: Service IP provider
+	mapper := identity.NewMapper(cc, serviceIPProvider)
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
 			parts := strings.SplitN(podID, "/", 2)
@@ -131,7 +149,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, err
 	}
 
-	config, closer, err := cc.ServerTLSConfig(
+	conf, closer, err := cc.ServerTLSConfig(
 		config.Credentials{
 			KeyFile:  keyFile,
 			CertFile: certFile,
@@ -148,10 +166,10 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 
 	return &params{
 		addr: addr,
-		handler: &handler{
+		handler: util.NewAccessLogHandler(&handler{
 			verifier: verifier,
-		},
-		tls:           config,
+		}),
+		tls:           conf,
 		shutdownGrace: sg,
 		closers:       []io.Closer{closer},
 	}, nil

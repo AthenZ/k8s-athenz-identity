@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
