@@ -1,39 +1,43 @@
 participant Admin as admin
 participant Kubernetes as k8s
 participant "Initializer" as init
-participant Athenz as zts
+participant Kubelet as kubelet
 participant Pod as pod
+participant "Identity\nAgent" as agent
+participant "JWT\nservice" as jwt
+participant Athenz as zts
 participant "Provider\ncallback" as cb
 
+
 admin->zts: authorize k8s cluster\nto launch service
-admin->k8s: Provision ServiceAccount(sports-fe)
-admin->k8s: launchPod(images, ServiceAccount)
+admin->k8s: provision\nServiceAccount
+admin->k8s: launchPod\n(images, ServiceAccount)
 
 init->init: watch for pods
 
 loop for each pod
-  init->init: Generate Identity doc (jwt)
-  init->init: Update spec: inject SIA init,\n refresh container\n with identity env vars, volume mounts
+  init->init: inject flex volume, \ninit and refresh containers
   init->k8s: updated PodSpec
 end
 
-k8s->pod: Create Pod
-
-pod->pod: generate keypair, create CSR
-pod->zts: getIdentity(CSR, document)
-zts->cb: confirm signed identity document
-cb->cb: check signature, metadata
-cb->k8s: get pod
-k8s->cb: pod object
-cb->cb:verify attributes, IP
+k8s->kubelet: create Pod
+kubelet->kubelet: create FlexVolume
+kubelet->pod: create pod
+pod->agent: get identity
+agent->kubelet: get pod info
+kubelet->agent: pod info
+agent->jwt: pod info
+jwt->agent: JWT
+agent->agent: generate keypair,\ncreate CSR
+agent->zts: getIdentity(CSR, JWT)
+zts->cb: confirm\nlaunch(JWT)
+cb->cb: check signature,\nmetadata
+cb->k8s: get pod/ service
+k8s->cb: pod/ service object
+cb->cb:verify attributes
 
 cb-> zts: ok
 zts-> zts: mint cert(s)
-zts->pod: X.509 cert
-
-loop every 'x' hours
-  pod->zts: refresh request using previous cert
-  zts->zts: verify old cert,\nmint new certs
-  zts->pod: X.509 cert
-end
+zts->agent: X.509 cert
+agent->pod: X.509 cert + key
 
