@@ -1,6 +1,3 @@
-design
-===
-
 ### Athenz overview
 
 * Athenz is an athentication/ authorization system. Authorization is based on RBAC.
@@ -44,15 +41,12 @@ A TLS cert for an Athenz service has the following characteristics.
 
 * A common name that is the equal to `<athenz-domain><DOT><athenz-service>` (e.g. `media.sports.frontend`)
 * 2 SAN names constructed as follows:
-    * `<service><DOT><dashed-domain><DOT><dns-suffix>`
+    * `<service><DOT><mangled-domain><DOT><dns-suffix>`
     * `<unique-id><DOT>instanceid.athenz<DOT><dns-suffix>`
 
-  where `dns-suffix` is a suffix that is allocated per provider service.
-* It may be possible to arrange the DNS suffix and domain transformation such that the `kube-dns` name and the
-  SAN name in the Athenz cert match exactly. This option has not been fully explored; the current prototype 
-  assumes that the DNS names for the same service will be different across Athenz and K8s.
-  * This adds friction for mutual TLS where one service needs to connect to another via the `kube-dns` name and set up
-    SNI for the Athenz name.
+  where `dns-suffix` is a suffix that is allocated per provider service. This should be arranged to be the same
+  as the DNS suffix used for kube-dns for the cluster. `mangled-domain` is the domain with dots replaced with
+  dashes and literal dashes turned into double dashes.
 
 ### Service identity bootstrap
 
@@ -73,6 +67,11 @@ A TLS cert for an Athenz service has the following characteristics.
   a signing service that has been loaded with private keys. The corresponding public keys are loaded into the 
   provider callback for verifying JWTs. The identity agent uses the signing service to sign JWTs.
 * Mutual TLS ensures that only the components that can allowed to talk to each other can in fact do so.
+
+### Launch flow
+
+![sequence diagram](sequence.png)
+
 
 ### Identity document
 
@@ -100,7 +99,4 @@ The identity document is a JWT that looks as follows:
 }
 ```
 
-### Launch flow
-
-![sequence diagram](sequence.png)
 

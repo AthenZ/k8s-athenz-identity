@@ -94,7 +94,7 @@ func newZTS(tls *tls.Config, caCertPEM, caKeyPEM []byte, cc *config.ClusterConfi
 		caCert:     cert,
 		caKeyPEM:   caKeyPEM,
 		caCertPEM:  caCertPEM,
-		dnsSuffix:  cc.AthenzDNSSuffix,
+		dnsSuffix:  cc.DNSSuffix,
 	}, nil
 }
 
@@ -221,14 +221,10 @@ func (z *zts) ProviderRegistration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := *z.tls
-	pos := strings.LastIndex(in.Provider, ".")
-	pd, ps := in.Provider[:pos], in.Provider[pos+1:]
-	t.ServerName = z.cc.AthenzSANName(pd, ps) // TODO: this needs to be figured out to see if it will work with real Athenz
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &t,
+			TLSClientConfig: z.tls,
 		},
 	}
 	u := endpoint + "/identity"

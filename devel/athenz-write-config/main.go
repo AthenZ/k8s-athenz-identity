@@ -14,8 +14,7 @@ import (
 
 func main() {
 	var (
-		dnsSuffix       = "example.cloud"
-		k8sSuffix       = "svc.cluster.local"
+		dnsSuffix       = "svc.cluster.local"
 		adminDomain     = "k8s.admin"
 		athenzRootFile  = "athenz-ca.pub.pem"
 		serviceRootFile = "athenz-root-ca.pub.pem"
@@ -25,8 +24,7 @@ func main() {
 		wrap            = false
 	)
 	flag.BoolVar(&wrap, "wrap", wrap, "wrap config in config map")
-	flag.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "Athens DNS suffix")
-	flag.StringVar(&k8sSuffix, "k8s-dns-suffix", k8sSuffix, "K8s DNS suffix")
+	flag.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "cluster DNS suffix")
 	flag.StringVar(&adminDomain, "admin-domain", adminDomain, "admin/ cluster domain")
 	flag.StringVar(&athenzRootFile, "athenz-ca", athenzRootFile, "CA for trusting Athenz servers")
 	flag.StringVar(&serviceRootFile, "root-ca", serviceRootFile, "CA for trusting Athens-signed TLS certs")
@@ -45,9 +43,8 @@ func main() {
 	}
 
 	c := &config.ClusterConfiguration{
-		AthenzDNSSuffix: dnsSuffix,
-		KubeDNSSuffix:   k8sSuffix,
-		AdminDomain:     adminDomain,
+		DNSSuffix:   dnsSuffix,
+		AdminDomain: adminDomain,
 		TrustRoots: map[config.TrustedSource]string{
 			config.AthenzRoot:  string(athensCA),
 			config.ServiceRoot: string(rootCA),

@@ -131,12 +131,6 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, err
 	}
 
-	d, s, err := cc.KubeDNSToDomainService(jwtEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	cfg.ServerName = cc.AthenzSANName(d, s) // TODO: figure out how to get rid of this
-
 	client := jwt.NewClient(jwtEndpoint, &http.Client{
 		Timeout: jt,
 		Transport: &http.Transport{
@@ -147,8 +141,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		defer func() {
 			log.Println("SIP for ", domain, "/", service, "=", x, err)
 		}()
-		ns := cc.DomainToNamespace(domain)
-		host := fmt.Sprintf("%s.%s.%s", service, ns, cc.KubeDNSSuffix)
+		host := cc.ServiceURLHost(domain, service)
 		if ips, err := net.LookupIP(host); err == nil {
 			for _, ip := range ips {
 				if ip.To4() != nil {
@@ -170,7 +163,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		ZTSEndpoint:     cc.ZTSEndpoint,
 		ClusterConfig:   cc,
 		ProviderService: cc.ProviderService,
-		DNSSuffix:       cc.AthenzDNSSuffix,
+		DNSSuffix:       cc.DNSSuffix,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "ident.NewHandler")

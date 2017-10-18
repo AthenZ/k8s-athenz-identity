@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -137,7 +136,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		domain:     domain,
 		service:    account,
 		opts: util.CSROptions{
-			DNSNames: []string{fmt.Sprintf("%s.%s.%s", account, strings.Replace(domain, ".", "-", -1), cc.AthenzDNSSuffix)},
+			DNSNames: []string{cc.ServiceURLHost(domain, account)},
 		},
 	})
 	if err != nil {

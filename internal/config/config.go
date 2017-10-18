@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"strings"
 
 	"flag"
@@ -39,13 +38,12 @@ func unmangleDomain(ns string) (domain string) {
 
 // ClusterConfiguration is the config for the cluster
 type ClusterConfiguration struct {
-	AthenzDNSSuffix string                   `json:"athenz-dns-suffix"` // the DNS suffix for Athenz minted certs
-	KubeDNSSuffix   string                   `json:"kube-dns-suffix"`   // the DNS suffix configured for kube-dns
-	AdminDomain     string                   `json:"admin-domain"`      // the admin domain used for namespace to domain mapping
-	ZTSEndpoint     string                   `json:"zts-endpoint"`      // ZTS endpoint with /v1 path
-	ProviderService string                   `json:"provider-service"`  // the provider service as a fully qualified Athenz name
-	TrustRoots      map[TrustedSource]string `json:"trust-roots"`       // CA certs for various trusted sources
-	AuthHeader      string                   `json:"auth-header"`       // auth header name for Athenz requests
+	DNSSuffix       string                   `json:"dns-suffix"`       // the DNS suffix for kube-dns as well as Athenz minted certs
+	AdminDomain     string                   `json:"admin-domain"`     // the admin domain used for namespace to domain mapping
+	ZTSEndpoint     string                   `json:"zts-endpoint"`     // ZTS endpoint with /v1 path
+	ProviderService string                   `json:"provider-service"` // the provider service as a fully qualified Athenz name
+	TrustRoots      map[TrustedSource]string `json:"trust-roots"`      // CA certs for various trusted sources
+	AuthHeader      string                   `json:"auth-header"`      // auth header name for Athenz requests
 }
 
 func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, error) {
@@ -60,8 +58,8 @@ func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, err
 	return pool, nil
 }
 
-func (c *ClusterConfiguration) AthenzSANName(domain, service string) string {
-	return fmt.Sprintf("%s.%s.%s", service, strings.Replace(domain, ".", "-", -1), c.AthenzDNSSuffix)
+func (c *ClusterConfiguration) ServiceURLHost(domain, service string) string {
+	return fmt.Sprintf("%s.%s.%s", service, mangleDomain(domain), c.DNSSuffix)
 }
 
 func (c *ClusterConfiguration) NamespaceToDomain(ns string) (domain string) {
@@ -78,39 +76,6 @@ func (c *ClusterConfiguration) DomainToNamespace(domain string) (namespace strin
 		return domain[len(c.AdminDomain)+1:]
 	}
 	return mangleDomain(domain)
-}
-
-func (c *ClusterConfiguration) KubeDNSToDomainService(k8sDNSNameOrURL string) (string, string, error) {
-	k8sDNSName := k8sDNSNameOrURL
-	if strings.HasPrefix(k8sDNSNameOrURL, "https://") || strings.HasPrefix(k8sDNSNameOrURL, "http://") {
-		u, err := url.Parse(k8sDNSNameOrURL)
-		if err != nil {
-			return "", "", err
-		}
-		k8sDNSName = u.Hostname()
-	}
-	expected := strings.Split(c.KubeDNSSuffix, ".")
-	actual := strings.Split(k8sDNSName, ".")
-	if len(actual) < 2 {
-		return "", "", fmt.Errorf("invalid k8s DNS name %q, must have at least 2 parts", k8sDNSName)
-	}
-	if len(actual) > 2 {
-		rest := actual[2:]
-		if len(rest) > len(expected) {
-			return "", "", fmt.Errorf("invalid k8s DNS name %q, has too many parts", k8sDNSName)
-		}
-		good := true
-		for i, part := range rest {
-			if part != expected[i] {
-				good = false
-				break
-			}
-		}
-		if !good {
-			return "", "", fmt.Errorf("invalid k8s DNS name %q, bad suffix", k8sDNSName)
-		}
-	}
-	return c.NamespaceToDomain(actual[1]), actual[0], nil
 }
 
 func CmdLine(f *flag.FlagSet) func() (*ClusterConfiguration, error) {
