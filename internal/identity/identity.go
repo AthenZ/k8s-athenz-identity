@@ -1,3 +1,4 @@
+// Package identity defines the pod identity model along with serialization semantics.
 package identity
 
 import (

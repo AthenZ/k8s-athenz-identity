@@ -1,3 +1,4 @@
+// Package config provides configuration information using a config map document.
 package config
 
 import (

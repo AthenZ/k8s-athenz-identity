@@ -1,3 +1,4 @@
+// Package keys provides a mechanism to get versioned keys.
 package keys
 
 import (
