@@ -27,13 +27,13 @@ func main() {
 	flag.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "cluster DNS suffix")
 	flag.StringVar(&adminDomain, "admin-domain", adminDomain, "admin/ cluster domain")
 	flag.StringVar(&athenzRootFile, "athenz-ca", athenzRootFile, "CA for trusting Athenz servers")
-	flag.StringVar(&serviceRootFile, "root-ca", serviceRootFile, "CA for trusting Athens-signed TLS certs")
+	flag.StringVar(&serviceRootFile, "root-ca", serviceRootFile, "CA for trusting Athenz-signed TLS certs")
 	flag.StringVar(&ztsEndpoint, "zts-endpoint", ztsEndpoint, "ZTS endpoint")
 	flag.StringVar(&providerService, "provider-service", providerService, "provider service name in Athenz format")
 	flag.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
 	flag.Parse()
 
-	athensCA, err := ioutil.ReadFile(athenzRootFile)
+	athenzCA, err := ioutil.ReadFile(athenzRootFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -46,7 +46,7 @@ func main() {
 		DNSSuffix:   dnsSuffix,
 		AdminDomain: adminDomain,
 		TrustRoots: map[config.TrustedSource]string{
-			config.AthenzRoot:  string(athensCA),
+			config.AthenzRoot:  string(athenzCA),
 			config.ServiceRoot: string(rootCA),
 		},
 		ZTSEndpoint:     ztsEndpoint,

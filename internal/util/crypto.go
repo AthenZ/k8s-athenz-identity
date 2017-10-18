@@ -16,15 +16,17 @@ import (
 // KeyType is the type of private key.
 type KeyType int
 
+// supported key types
 const (
 	_ KeyType = iota
 	RSA
 	ECDSA
 )
 
+// CSROptions has optional config for creating a CSR request
 type CSROptions struct {
-	DNSNames    []string
-	IPAddresses []net.IP
+	DNSNames    []string // DNS SAN names
+	IPAddresses []net.IP // IP SANs
 }
 
 func generateKey() (*rsa.PrivateKey, []byte, error) {
@@ -40,6 +42,7 @@ func generateKey() (*rsa.PrivateKey, []byte, error) {
 	return k, keyPEM, nil
 }
 
+// PublicKeyFromPEMBytes returns a public key from its supplied PEM representation.
 func PublicKeyFromPEMBytes(pemBytes []byte) (crypto.PublicKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -52,6 +55,8 @@ func PublicKeyFromPEMBytes(pemBytes []byte) (crypto.PublicKey, error) {
 	return key, nil
 }
 
+// PrivateKeyFromPEMBytes returns a private key along with its type from its supplied
+// PEM representation.
 func PrivateKeyFromPEMBytes(privatePEMBytes []byte) (KeyType, crypto.Signer, error) {
 	handle := func(err error) (KeyType, crypto.Signer, error) {
 		return 0, nil, errors.Wrap(err, "PrivateKeyFromPEMBytes")
@@ -78,6 +83,7 @@ func PrivateKeyFromPEMBytes(privatePEMBytes []byte) (KeyType, crypto.Signer, err
 	}
 }
 
+// GenerateCSR generates a CSR using the supplied key, common name and options.
 func GenerateCSR(signer crypto.Signer, commonName string, opts CSROptions) (csrPEM []byte, err error) {
 	template := x509.CertificateRequest{
 		Subject: pkix.Name{
@@ -100,6 +106,7 @@ func GenerateCSR(signer crypto.Signer, commonName string, opts CSROptions) (csrP
 	return
 }
 
+// GenerateKeyAndCSR generates a private key and returns the key and CSR PEMs.
 func GenerateKeyAndCSR(commonName string, opts CSROptions) (keyPEM, csrPEM []byte, err error) {
 	var k *rsa.PrivateKey
 	k, keyPEM, err = generateKey()

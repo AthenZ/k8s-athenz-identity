@@ -163,7 +163,6 @@ func parseFlags(program string, args []string) (*params, error) {
 		ZTSEndpoint:     cc.ZTSEndpoint,
 		ClusterConfig:   cc,
 		ProviderService: cc.ProviderService,
-		DNSSuffix:       cc.DNSSuffix,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "ident.NewHandler")

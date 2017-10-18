@@ -20,11 +20,7 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
-type InstanceRefreshRequest struct {
-	Csr        string `json:"csr"`
-	ExpiryTime *int32 `json:"expiryTime,omitempty" rdl:"optional"`
-}
-
+// Identity is the identity returned by Athenz for the control plane SIA
 type Identity struct {
 	Name         string `json:"name"`
 	Certificate  string `json:"certificate,omitempty"`
@@ -32,6 +28,16 @@ type Identity struct {
 	ServiceToken string `json:"serviceToken,omitempty"`
 }
 
+// InstanceRefreshRequest is the request to refresh a TLS cert.
+// The client needs to identify itself using the previous key and cert
+// in its TLS config.
+type InstanceRefreshRequest struct {
+	Csr        string `json:"csr"`
+	ExpiryTime *int32 `json:"expiryTime,omitempty" rdl:"optional"`
+}
+
+// InstanceRegisterInformation is the payload to Athenz
+// from an SIA agent for initial register.
 type InstanceRegisterInformation struct {
 	Provider        string `json:"provider"`
 	Domain          string `json:"domain"`
@@ -41,11 +47,7 @@ type InstanceRegisterInformation struct {
 	Token           *bool  `json:"token,omitempty"`
 }
 
-type InstanceRefreshInformation struct {
-	Csr   string `json:"csr"`
-	Token *bool  `json:"token,omitempty"`
-}
-
+// InstanceIdentity is the identity returned by Athenz for the data plane SIA
 type InstanceIdentity struct {
 	Provider              string            `json:"provider"`
 	Name                  string            `json:"name"`

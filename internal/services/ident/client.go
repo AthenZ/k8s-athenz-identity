@@ -10,8 +10,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Client is a client for identity services.
 type Client interface {
+	// Init returns an identity object.
 	Init() (*Identity, error)
+	// Refresh returns an identity object given refresh parameters.
 	Refresh(r RefreshRequest) (*Identity, error)
 }
 
@@ -21,6 +24,9 @@ type client struct {
 	c        *http.Client
 }
 
+// NewClient returns a client for the specific endpoint and opaque pod id.
+// The HTTP client may be nil for simple HTTP endpoints but must be supplied
+// for UDS endpoints.
 func NewClient(endpoint string, hashedID string, c *http.Client) Client {
 	if c == nil {
 		c = &http.Client{}

@@ -19,7 +19,6 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/services"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -63,6 +62,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		publicKeyDir  = util.EnvOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
 		ztsCommonName = util.EnvOrDefault("ZTS_COMMON_NAME", "zts.example.cloud")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		secretName    = util.EnvOrDefault("SECRET_PREFIX", "athenz-init-secret")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
@@ -70,6 +70,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	f.StringVar(&keyFile, "key", keyFile, "path to key file")
 	f.StringVar(&certFile, "cert", certFile, "path to cert file")
 	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
+	f.StringVar(&secretName, "secret-name", secretName, "file prefix for public key files")
 	f.StringVar(&ztsCommonName, "zts-name", ztsCommonName, "common name to verify in Athenz TLS cert")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	cp := config.CmdLine(f)
@@ -129,7 +130,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return "", err
 	}
 
-	publicSource := keys.NewPublicKeySource(publicKeyDir, services.AthensInitSecret)
+	publicSource := keys.NewPublicKeySource(publicKeyDir, secretName)
 	mapper := identity.NewMapper(cc, serviceIPProvider)
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodSubject, error) {

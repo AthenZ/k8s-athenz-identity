@@ -110,8 +110,8 @@ if [[ ! -f signing.pem ]]
 then
     openssl genrsa -out signing.pem 2048
     openssl rsa -in signing.pem -outform PEM -pubout -out signing.pub.pem
-    kubectl --namespace=${NS} create secret generic athenz-signing-public --from-literal="signing.v1=`cat signing.pub.pem`"
-    kubectl --namespace=${NS} create secret generic athenz-signing-private --from-literal="signing.v1=`cat signing.pem`"
+    kubectl --namespace=${NS} create secret generic athenz-signing-public --from-literal="athenz-init-secret.v1=`cat signing.pub.pem`"
+    kubectl --namespace=${NS} create secret generic athenz-signing-private --from-literal="athenz-init-secret.v1=`cat signing.pem`"
 fi
 
 section "Create JWT keys"

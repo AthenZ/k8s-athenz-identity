@@ -7,19 +7,19 @@ import (
 	"log"
 	"net/url"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
+
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
-var regexKeyFileName = regexp.MustCompile(".*\\.v([0-9]+)$")
-
 type versionedFiles struct {
-	dir string
+	dir    string
+	prefix string
 }
 
 type fv struct {
@@ -30,25 +30,23 @@ type fv struct {
 
 func (f *versionedFiles) list() ([]fv, error) {
 	var ret []fv
-	seen := map[int]string{}
+	prefix := f.prefix + ".v"
 	if files, err := ioutil.ReadDir(f.dir); err == nil {
 		for _, file := range files {
-			match := regexKeyFileName.FindStringSubmatch(file.Name())
-			if match == nil {
+			name := file.Name()
+			if !strings.HasPrefix(name, prefix) {
+				log.Printf("invalid versioned file '%s', does not start with '%s'", name, prefix)
 				continue
 			}
-			if version, err := strconv.Atoi(match[1]); err == nil {
-				if seen[version] != "" {
-					return nil, fmt.Errorf("multiple files with same version, %s and %s", seen[version], file)
-				}
-				seen[version] = file.Name()
+			v := strings.TrimPrefix(name, prefix)
+			if version, err := strconv.Atoi(v); err == nil {
 				ret = append(ret, fv{
-					file:       filepath.Join(f.dir, file.Name()),
+					file:       filepath.Join(f.dir, name),
 					version:    version,
 					versionStr: fmt.Sprintf("v%d", version),
 				})
 			} else {
-				log.Println("invalid file", file, err)
+				log.Printf("invalid version '%s' for file '%s'\n", v, name)
 			}
 		}
 	} else {
@@ -113,20 +111,26 @@ func parseSecretURI(uri, expectedName string) (version string, err error) {
 	return v, nil
 }
 
+// PrivateKeySource returns signing keys using the latest version found in a directory.
 type PrivateKeySource struct {
 	secretName string
 	files      *versionedFiles
 }
 
+// NewPrivateKeySource returns a private key source that uses files in the supplied directory
+// having the supplied prefix. Files in the directory must be named <secret-name>.v<n> to
+// be considered. Sorting is not lexicographic; "v10" sorts higher than "v9"
 func NewPrivateKeySource(dir string, secretName string) *PrivateKeySource {
 	return &PrivateKeySource{
 		secretName: secretName,
 		files: &versionedFiles{
-			dir: dir,
+			dir:    dir,
+			prefix: secretName,
 		},
 	}
 }
 
+// SigningKey returns the current signing key.
 func (pks *PrivateKeySource) SigningKey() (*identity.SigningKey, error) {
 	contents, version, err := pks.files.latestVersionContents()
 	if err != nil {
@@ -144,20 +148,26 @@ func (pks *PrivateKeySource) SigningKey() (*identity.SigningKey, error) {
 	}, nil
 }
 
+// PublicKeySource returns public keys for specific key versions.
 type PublicKeySource struct {
 	secretName string
 	files      *versionedFiles
 }
 
+// NewPublicKeySource returns a public key source that uses files in the supplied directory
+// having the supplied prefix. Files in the directory must be named <secret-name>.v<n> to
+// be considered.
 func NewPublicKeySource(dir string, secretName string) *PublicKeySource {
 	return &PublicKeySource{
 		secretName: secretName,
 		files: &versionedFiles{
-			dir: dir,
+			dir:    dir,
+			prefix: secretName,
 		},
 	}
 }
 
+// PublicKey returns the public key for the supplied issuer URI.
 func (pks *PublicKeySource) PublicKey(issuerURI string) (pubKey crypto.PublicKey, err error) {
 	version, err := parseSecretURI(issuerURI, pks.secretName)
 	if err != nil {

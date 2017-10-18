@@ -13,6 +13,7 @@ import (
 
 var defaultPollInterval = 5 * time.Minute // default that can be customized in tests
 
+// LogFn allows customized logging.
 type LogFn func(format string, args ...interface{})
 
 // CertReloader reloads the (key, cert) pair from the filesystem when
@@ -76,14 +77,14 @@ func (w *CertReloader) pollRefresh() error {
 	}
 }
 
-// reloadConfig contains the config for cert reload.
+// ReloadConfig contains the config for cert reload.
 type ReloadConfig struct {
 	CertFile string // the cert file
 	KeyFile  string // the key file
 	Logger   LogFn  // custom log function for errors, optional
 }
 
-// newCertReloader returns a CertReloader that reloads the (key, cert) pair whenever
+// NewCertReloader returns a CertReloader that reloads the (key, cert) pair whenever
 // the cert file changes on the filesystem.
 func NewCertReloader(config ReloadConfig) (*CertReloader, error) {
 	if config.Logger == nil {

@@ -94,13 +94,17 @@ func verifySubjectURI(u string, provider AttributeProvider) (*PodSubject, error)
 	return attrs, nil
 }
 
+// ServiceIPProvider returns a service IP, if present, for the supplied Athenz domain and
+// service. It should return a blank string when no IP is found.
 type ServiceIPProvider func(domain, service string) (string, error)
 
+// Mapper maps pod attributes to a subject.
 type Mapper struct {
 	provider ServiceIPProvider
 	config   *config.ClusterConfiguration
 }
 
+// NewMapper returns a mapper that can provide pod attributes for a pod object.
 func NewMapper(c *config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
 	return &Mapper{
 		config:   c,

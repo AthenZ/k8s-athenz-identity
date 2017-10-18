@@ -1,3 +1,4 @@
+// Package jwt provides a client and handler implementation for the JWT service.
 package jwt
 
 import (
@@ -22,6 +23,7 @@ type signResponse struct {
 	JWT string `json:"jwt"`
 }
 
+// NewHandler returns a handler for the JWT service for the supplied prefix and serializer.
 func NewHandler(versionPrefix string, serializer func(subject *identity.PodSubject) (string, error)) http.Handler {
 	router := httptreemux.New()
 	router.POST(versionPrefix+jwtPath, func(w http.ResponseWriter, r *http.Request, _ map[string]string) {
@@ -46,7 +48,9 @@ func NewHandler(versionPrefix string, serializer func(subject *identity.PodSubje
 	return router
 }
 
+// Client is a client to the JWT service.
 type Client interface {
+	// GetJWT returns the JWT for the supplied subject.
 	GetJWT(subject *identity.PodSubject) (string, error)
 }
 
@@ -55,6 +59,7 @@ type client struct {
 	c        *http.Client
 }
 
+// NewClient returns a new client to the JWT service. The endpoint must have the version suffix.
 func NewClient(endpoint string, c *http.Client) Client {
 	if c == nil {
 		c = &http.Client{}
@@ -65,6 +70,7 @@ func NewClient(endpoint string, c *http.Client) Client {
 	}
 }
 
+// GetJWT implements the client interface.
 func (c *client) GetJWT(s *identity.PodSubject) (string, error) {
 	u := c.endpoint + jwtPath
 	reqBytes, err := json.Marshal(signRequest{Subject: *s})

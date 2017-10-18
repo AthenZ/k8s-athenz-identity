@@ -71,18 +71,22 @@ func (v *IdentityVolume) rootDir() string {
 	return filepath.Join(hostVolumeSource, v.root)
 }
 
+// Destroy deletes the identity volume.
 func (v *IdentityVolume) Destroy() error {
 	return os.RemoveAll(v.rootDir())
 }
 
+// MountRoot returns the path that should be mounted into a container.
 func (v *IdentityVolume) MountRoot() string {
 	return filepath.Join(v.rootDir(), "mount")
 }
 
+// SocketPath returns the directory of the agent socket.
 func (v *IdentityVolume) SocketPath() string {
 	return filepath.Join(v.MountRoot(), "connect")
 }
 
+// Create creates the artifacts for the supplied pod namespace and name.
 func (v *IdentityVolume) Create(namespace, name string) error {
 	id := podIdentifier{Namespace: namespace, Name: name}
 	if err := id.AssertValid(); err != nil {

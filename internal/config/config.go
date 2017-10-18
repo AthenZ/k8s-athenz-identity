@@ -15,6 +15,7 @@ import (
 // TrustedSource is a source that can be trusted using CA certs.
 type TrustedSource string
 
+// List of known trusted sources
 const (
 	AnySource   TrustedSource = ""               // trust any source
 	AthenzRoot  TrustedSource = "athenz"         // root CA to use to trust the Athenz service itself
@@ -46,6 +47,7 @@ type ClusterConfiguration struct {
 	AuthHeader      string                   `json:"auth-header"`      // auth header name for Athenz requests
 }
 
+// trustRoot returns an x509 certificate pool for trusting the supplied source.
 func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, error) {
 	b, ok := c.TrustRoots[src]
 	if !ok {
@@ -58,10 +60,12 @@ func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, err
 	return pool, nil
 }
 
+// ServiceURLHost returns the host part of the service URL for a service.
 func (c *ClusterConfiguration) ServiceURLHost(domain, service string) string {
 	return fmt.Sprintf("%s.%s.%s", service, mangleDomain(domain), c.DNSSuffix)
 }
 
+// NamespaceToDomain converts a k8s namespace to an Athenz domain.
 func (c *ClusterConfiguration) NamespaceToDomain(ns string) (domain string) {
 	if isSystemNamespace(ns) {
 		domain = fmt.Sprintf("%s.%s", c.AdminDomain, ns)
@@ -71,6 +75,7 @@ func (c *ClusterConfiguration) NamespaceToDomain(ns string) (domain string) {
 	return domain
 }
 
+// DomainToNamespace returns the k8s namespace for the supplied Athenz domain.
 func (c *ClusterConfiguration) DomainToNamespace(domain string) (namespace string) {
 	if strings.HasPrefix(domain, c.AdminDomain+".") {
 		return domain[len(c.AdminDomain)+1:]
@@ -78,6 +83,8 @@ func (c *ClusterConfiguration) DomainToNamespace(domain string) (namespace strin
 	return mangleDomain(domain)
 }
 
+// CmdLine provides a mechanism to return the cluster configuration for a
+// CLI app.
 func CmdLine(f *flag.FlagSet) func() (*ClusterConfiguration, error) {
 	file := util.EnvOrDefault("CONFIG_URL", "/var/cluster/config.yaml")
 	f.StringVar(&file, "config", file, "cluster config file path")

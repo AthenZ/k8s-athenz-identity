@@ -1,3 +1,4 @@
+// Package ident provides a client and handler implementation for the identity agent.
 package ident
 
 import (
@@ -20,6 +21,7 @@ const (
 	refreshPath = "/refresh"
 )
 
+// Identity has all the artifacts to prove workload identity.
 type Identity struct {
 	NToken    string `json:"ntoken"`
 	KeyPEM    []byte `json:"keyPEM"`
@@ -27,11 +29,13 @@ type Identity struct {
 	CACertPem []byte `json:"caCertPEM"`
 }
 
+// RefreshRequest is the input for identity refresh.
 type RefreshRequest struct {
-	KeyPEM  []byte `json:"KeyPEM"`
-	CertPEM []byte `json:"certPEM"`
+	KeyPEM  []byte `json:"KeyPEM"`  // the prior key
+	CertPEM []byte `json:"certPEM"` // the prior cert
 }
 
+// Signer produces an identity document for a pod subject.
 type Signer func(subject *identity.PodSubject) (string, error)
 
 // identityContext is the context for the identity document.
@@ -53,13 +57,13 @@ func (c *identityContext) assertValid() error {
 	})
 }
 
+// HandlerConfig is the configuration for the identity handler.
 type HandlerConfig struct {
-	Signer          Signer
-	AttrProvider    identity.AttributeProvider
-	ZTSEndpoint     string
-	ClusterConfig   *config.ClusterConfiguration
-	ProviderService string
-	DNSSuffix       string
+	Signer          Signer                       // used to sign JWTs
+	AttrProvider    identity.AttributeProvider   // used to extract a pod subject from attributes
+	ZTSEndpoint     string                       // Athenz endpoint
+	ClusterConfig   *config.ClusterConfiguration // cluster config
+	ProviderService string                       // the name of the provider callback service.
 }
 
 func (h *HandlerConfig) assertValid() error {
@@ -68,7 +72,6 @@ func (h *HandlerConfig) assertValid() error {
 		"AttrProvider":    h.AttrProvider == nil,
 		"ZTSEndpoint":     h.ZTSEndpoint == "",
 		"ProviderService": h.ProviderService == "",
-		"DNSSuffix":       h.DNSSuffix == "",
 		"ClusterConfig":   h.ClusterConfig == nil,
 	})
 }
@@ -77,6 +80,7 @@ type handler struct {
 	HandlerConfig
 }
 
+// NewHandler returns the identity agent handler for the supplied leading path and configuration.
 func NewHandler(versionPrefix string, config HandlerConfig) (http.Handler, error) {
 	if err := config.assertValid(); err != nil {
 		return nil, err
@@ -138,8 +142,8 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 		Service:         subject.Service,
 		ProviderService: h.ProviderService,
 		SANNames: []string{
-			fmt.Sprintf("%s.%s.%s", subject.Service, dashedDomain, h.DNSSuffix),
-			fmt.Sprintf("%s.instanceid.athenz.%s", localName, h.DNSSuffix),
+			fmt.Sprintf("%s.%s.%s", subject.Service, dashedDomain, h.ClusterConfig.DNSSuffix),
+			fmt.Sprintf("%s.instanceid.athenz.%s", localName, h.ClusterConfig.DNSSuffix),
 		},
 		SANIPs: []string{
 			subject.IP,

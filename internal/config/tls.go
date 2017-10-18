@@ -54,16 +54,19 @@ func getVerifier(allowFn func(*x509.Certificate) bool) func([][]byte, [][]*x509.
 	}
 }
 
+// Credentials is a key, cert file pair
 type Credentials struct {
-	KeyFile  string
-	CertFile string
+	KeyFile  string // the key file in PEM format
+	CertFile string // the cert file in PEM format
 }
 
+// VerifyClient allows a server to set up mutual TLS. The zero value makes no additional checks.
 type VerifyClient struct {
-	Source TrustedSource
-	Allow  func(cert *x509.Certificate) bool
+	Source TrustedSource                     // the source to trust
+	Allow  func(cert *x509.Certificate) bool // a function that will be called for every verified TLS cert
 }
 
+// ClientTLSConfig returns the TLS configuration for a client that wants to connect to a specific source.
 func (c *ClusterConfiguration) ClientTLSConfig(src TrustedSource) (*tls.Config, error) {
 	pool, err := c.trustRoot(src)
 	if err != nil {
@@ -74,6 +77,8 @@ func (c *ClusterConfiguration) ClientTLSConfig(src TrustedSource) (*tls.Config, 
 	}), nil
 }
 
+// ClientTLSConfigWithCreds returns the TLS configuration for a client that wants to identify itself and
+// connect to a specific source.
 func (c *ClusterConfiguration) ClientTLSConfigWithCreds(creds Credentials, src TrustedSource) (*tls.Config, io.Closer, error) {
 	pool, err := c.trustRoot(src)
 	if err != nil {
@@ -94,6 +99,8 @@ func (c *ClusterConfiguration) ClientTLSConfigWithCreds(creds Credentials, src T
 	}), reloader, nil
 }
 
+// ServerTLSConfig returns the server TLS config for the specified credentials and optionally verifies client
+// identity using the supplied verifier.
 func (c *ClusterConfiguration) ServerTLSConfig(creds Credentials, vc VerifyClient) (*tls.Config, io.Closer, error) {
 	var pool *x509.CertPool
 	var err error

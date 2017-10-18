@@ -18,6 +18,7 @@ func parseEndpoint(endpoint string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
+// NewDialer returns a dial function for a UDS or TCP endpoint.
 func NewDialer(endpoint string) (func(c context.Context) (net.Conn, error), error) {
 	t, a, err := parseEndpoint(endpoint)
 	if err != nil {
@@ -29,6 +30,7 @@ func NewDialer(endpoint string) (func(c context.Context) (net.Conn, error), erro
 	}, nil
 }
 
+// NewListener returns a listener for a UDS or TCP endpoint.
 func NewListener(endpoint string) (net.Listener, error) {
 	t, a, err := parseEndpoint(endpoint)
 	if err != nil {

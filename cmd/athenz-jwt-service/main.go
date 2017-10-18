@@ -18,7 +18,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/services"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/jwt"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -62,6 +61,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		trustCN       = util.EnvOrDefault("IDENTITY_CN", "")
 		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
 		tokenExpiry   = util.EnvOrDefault("TOKEN_EXPIRY", "5m")
+		secretName    = util.EnvOrDefault("SECRET_PREFIX", "athenz-init-secret")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 
@@ -71,6 +71,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	f.StringVar(&certFile, "cert", certFile, "path to cert")
 	f.StringVar(&trustCN, "identity-cn", trustCN, "common name for identity agent cert")
 	f.StringVar(&tokenExpiry, "token-expiry", tokenExpiry, "token expiry for JWTs")
+	f.StringVar(&secretName, "secret-name", secretName, "file prefix for private key files")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
 	cp := config.CmdLine(f)
 
@@ -98,7 +99,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, err
 	}
 
-	privateSource := keys.NewPrivateKeySource(signingKeyDir, services.AthensInitSecret)
+	privateSource := keys.NewPrivateKeySource(signingKeyDir, secretName)
 
 	cc, err := cp()
 	if err != nil {

@@ -27,6 +27,7 @@ type SigningKeyProvider func() (*SigningKey, error)
 // AttributeProvider provides attributes given a pod ID.
 type AttributeProvider func(podID string) (*PodSubject, error)
 
+// SerializerConfig is the configuration for the JWT serializer
 type SerializerConfig struct {
 	TokenExpiry time.Duration      // JWT expiry
 	KeyProvider SigningKeyProvider // signing mechanism
@@ -49,6 +50,7 @@ type Serializer struct {
 	SerializerConfig
 }
 
+// NewSerializer returns a serializer for the supplied config.
 func NewSerializer(config SerializerConfig) (*Serializer, error) {
 	config.initDefaults()
 	if err := config.assertValid(); err != nil {
@@ -59,6 +61,7 @@ func NewSerializer(config SerializerConfig) (*Serializer, error) {
 	}, nil
 }
 
+// IdentityDoc returns the identity document for the supplied subject.
 func (s *Serializer) IdentityDoc(attrs *PodSubject) (string, error) {
 	k, err := s.KeyProvider()
 	if err != nil {
@@ -99,6 +102,7 @@ type Verifier struct {
 	VerifierConfig
 }
 
+// NewVerifier returns a verifier for the supplied config.
 func NewVerifier(config VerifierConfig) (*Verifier, error) {
 	if err := config.assertValid(); err != nil {
 		return nil, err
@@ -108,6 +112,8 @@ func NewVerifier(config VerifierConfig) (*Verifier, error) {
 	}, nil
 }
 
+// VerifyDoc verifies the supplied identity doc for signature and attributes
+// using the attribute provider.
 func (v *Verifier) VerifyDoc(identityDoc string) (*PodSubject, error) {
 	jwt, err := verifyJWT(identityDoc, v.PublicKeyProvider)
 	if err != nil {

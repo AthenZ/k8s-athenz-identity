@@ -84,7 +84,7 @@ environment variables etc.
 ```json
 {
   "alg": "RS256",
-  "iss": "secret:athens-init-secret?version=v1",
+  "iss": "secret:athenz-init-secret?version=v1",
   "typ": "JWT"
 }
 ```
@@ -96,7 +96,7 @@ environment variables etc.
   "aud": "k8s-athenz-identity",
   "exp": 1507101919,
   "iat": 1507101019,
-  "iss": "secret:athens-init-secret?version=v1",
+  "iss": "secret:athenz-init-secret?version=v1",
   "sub": "pod:k8s-namespace/k8s-pod-id?d=athenz-domain&n=athenz-service&i=pod-ip&s=service-ip"
 }
 ```
