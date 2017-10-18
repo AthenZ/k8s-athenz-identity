@@ -85,10 +85,10 @@ func (z *ztsClient) refreshIdentity(certPEM, keyPEM []byte) (*zts.InstanceIdenti
 		handle(err)
 	}
 
-	cfg := *z.tls
+	cfg := z.tls.Clone()
 	cfg.Certificates = []tls.Certificate{cert}
 	client := zts.NewClient(z.endpoint, &http.Transport{
-		TLSClientConfig: &cfg,
+		TLSClientConfig: cfg,
 	})
 	ctx := z.context
 	keyPEM, csrPEM, err := z.generateKeyAndCSR()

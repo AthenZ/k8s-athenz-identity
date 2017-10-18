@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 const (
@@ -62,7 +62,7 @@ func NewSerializer(config SerializerConfig) (*Serializer, error) {
 func (s *Serializer) IdentityDoc(attrs *PodSubject) (string, error) {
 	k, err := s.KeyProvider()
 	if err != nil {
-		return "", errors.Wrap(err,"key provider error")
+		return "", errors.Wrap(err, "key provider error")
 	}
 	subjectURI, err := attrs.toURI()
 	if err != nil {
