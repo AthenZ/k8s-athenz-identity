@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	"crypto/tls"
+
+	"net/http"
+
 	"github.com/yahoo/athenz/clients/go/zts"
 	"github.com/yahoo/athenz/libs/go/zmssvctoken"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -22,6 +26,7 @@ type ztsConfig struct {
 	domain     string
 	service    string
 	opts       util.CSROptions
+	tls        *tls.Config
 }
 
 func (z *ztsConfig) assertValid() error {
@@ -74,7 +79,9 @@ func (z *ztsClient) getCertificate() (ntoken string, cert []byte, caCert []byte,
 	if err != nil {
 		return handleError(err)
 	}
-	client := zts.NewClient(z.endpoint, nil)
+	client := zts.NewClient(z.endpoint, &http.Transport{
+		TLSClientConfig: z.tls,
+	})
 	client.AddCredentials(z.authHeader, token)
 	identity, err := client.PostInstanceRefreshRequest(
 		zts.CompoundName(z.domain),

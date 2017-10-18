@@ -16,18 +16,14 @@ spec:
     spec:
       serviceAccountName: athenz-initializer
       volumes:
-      - { name: "sign-private-dir", secret: { secretName: "athenz-initializer-private" } }
-
+      - { name: config-volume, configMap: { name: athenz-config } }
       containers:
       - name: main
         image: local/k8s-athenz-initializer:latest
         imagePullPolicy: Never
-        env:
-        - { name: "ATHENZ_INIT_CONFIG_NAMESPACE", valueFrom: { fieldRef: { fieldPath: "metadata.namespace" } } }
-        args:
-        - "--provider=k8s.root"
-        - "--configmap=athenz-initializer"
-        - "--dns-suffix=example.cloud"
-        - "--sign-key-dir=/var/keys/private"
         volumeMounts:
-        - { name: "sign-private-dir", mountPath: "/var/keys/private", readOnly: true }
+        - { name: config-volume, mountPath: /var/cluster, readOnly: true}
+        env:
+        - { name: CONFIG_NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        args:
+        - "--config-map=athenz-initializer"

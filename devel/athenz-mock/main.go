@@ -11,10 +11,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
-
 	"path/filepath"
 	"syscall"
+	"time"
+
+	"github.com/ghodss/yaml"
+	"github.com/yahoo/k8s-athenz-identity/devel/mock"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 const ztsPath = "/zts/v1"
@@ -33,6 +37,9 @@ func getVersion() string {
 
 type params struct {
 	addr          string
+	caAddr        string
+	keyFile       string
+	certFile      string
 	handler       http.Handler
 	shutdownGrace time.Duration
 	closers       []io.Closer
@@ -45,29 +52,26 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("MOCK_ATHENZ_LISTEN_ADDR", ":80")
-		keyFile       = envOrDefault("MOCK_ATHENZ_ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
-		certFile      = envOrDefault("MOCK_ATHENZ_ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
-		dnsSuffix     = envOrDefault("MOCK_ATHENZ_DNS_SUFFIX", "example.cloud")
-		shutdownGrace = envOrDefault("MOCK_ATHENZ_SHUTDOWN_GRACE", "10s")
+		addr          = util.EnvOrDefault("ADDR", ":4443")
+		rootKeyFile   = util.EnvOrDefault("ROOT_CA_KEY_FILE", "/var/athenz/root-ca/key")
+		rootCertFile  = util.EnvOrDefault("ROOT_CA_CERT_FILE", "/var/athenz/root-ca/cert")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/athenz/server/server.key")
+		certFile      = util.EnvOrDefault("CERT_FILE", "/var/athenz/server/server.cert")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		ztsConfig     = util.EnvOrDefault("ZTS_CONFIG", "/var/zts/config.yaml")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "listen", addr, "[<ip>]:<port> to listen on")
-	f.StringVar(&keyFile, "root-ca-key", keyFile, "path to TLS key")
-	f.StringVar(&certFile, "root-ca-cert", certFile, "path to TLS cert")
-	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name")
+	f.StringVar(&rootKeyFile, "root-ca-key", rootKeyFile, "path to root CA TLS key")
+	f.StringVar(&rootCertFile, "root-ca-cert", rootCertFile, "path to root CA TLS cert")
+	f.StringVar(&keyFile, "key", keyFile, "path to TLS key")
+	f.StringVar(&certFile, "cert", certFile, "path to TLS cert")
+	f.StringVar(&ztsConfig, "zts-config", ztsConfig, "path to ZTS config file")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -85,29 +89,56 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, errEarlyExit
 	}
 
+	cc, err := cp()
+	if err != nil {
+		return nil, err
+	}
+
+	b, err := ioutil.ReadFile(ztsConfig)
+	if err != nil {
+		return nil, err
+	}
+	var zc mock.ZTSConfig
+	if err := yaml.Unmarshal(b, &zc); err != nil {
+		return nil, err
+	}
+
+	rootKeyBytes, err := ioutil.ReadFile(rootKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	rootCertBytes, err := ioutil.ReadFile(rootCertFile)
+	if err != nil {
+		return nil, err
+	}
+
 	sg, err := time.ParseDuration(shutdownGrace)
 	if err != nil {
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
-	keyBytes, err := ioutil.ReadFile(keyFile)
-	if err != nil {
-		return nil, err
-	}
-	certBytes, err := ioutil.ReadFile(certFile)
+	// we talk to the provider using our identity and make sure provider
+	// is running with our CA certs
+	clientTLS, closer, err := cc.ClientTLSConfigWithCreds(config.Credentials{
+		KeyFile:  keyFile,
+		CertFile: certFile,
+	}, config.ServiceRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	z, err := newZTS(certBytes, keyBytes, dnsSuffix)
+	z, err := newZTS(clientTLS, rootCertBytes, rootKeyBytes, cc, &zc)
 	if err != nil {
 		return nil, err
 	}
 
 	return &params{
 		addr:          addr,
-		handler:       z.handler(ztsPath),
+		keyFile:       keyFile,
+		certFile:      certFile,
+		handler:       util.NewAccessLogHandler(z.handler(ztsPath)),
 		shutdownGrace: sg,
+		closers:       []io.Closer{closer},
 	}, nil
 }
 
@@ -122,9 +153,10 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 		Addr:    params.addr,
 		Handler: params.handler,
 	}
-	done := make(chan error, 1)
+
+	done := make(chan error, 2)
 	go func() {
-		done <- server.ListenAndServe()
+		done <- server.ListenAndServeTLS(params.certFile, params.keyFile)
 	}()
 
 	stopped := false

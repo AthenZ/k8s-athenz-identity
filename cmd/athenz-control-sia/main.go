@@ -9,11 +9,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -51,48 +51,38 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
-		endpoint        = envOrDefault("SIA_ZTS_ENDPOINT", "")
-		authHeader      = envOrDefault("SIA_AUTH_HEADER", "Athenz-Principal-Auth")
-		refreshInterval = envOrDefault("SIA_REFRESH_INTERVAL", "24h")
-		domain          = envOrDefault("ATHENZ_DOMAIN", "")
-		service         = envOrDefault("ATHENZ_SERVICE", "")
-		dnsSuffix       = envOrDefault("SIA_ATHENZ_DNS_SUFFIX", "")
-		identityDir     = envOrDefault("SIA_IN_IDENTITY_DIR", "/var/tls/athenz/private")
-		ntokenFile      = envOrDefault("SIA_OUT_TOKEN_FILE", "/tokens/ntoken")
-		certFile        = envOrDefault("SIA_OUT_CERT_FILE", "/var/tls/athenz/public/service.cert")
-		caCertFile      = envOrDefault("SIA_OUT_CA_CERT_FILE", "")
+		refreshInterval = util.EnvOrDefault("REFRESH_INTERVAL", "24h")
+		namespace       = util.EnvOrDefault("NAMESPACE", "")
+		account         = util.EnvOrDefault("ACCOUNT", "")
+		identityDir     = util.EnvOrDefault("IDENTITY_DIR", "/var/tls/athenz/private")
+		ntokenFile      = util.EnvOrDefault("TOKEN_FILE", "/tokens/ntoken")
+		certFile        = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
+		caCertFile      = util.EnvOrDefault("CA_CERT_FILE", "/var/tls/athenz/public/ca.cert")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
-	f.StringVar(&endpoint, "endpoint", endpoint, "ZTS endpoint with /v1 path, required")
-	f.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
 	f.StringVar(&refreshInterval, "refresh-interval", refreshInterval, "cert refresh interval")
-	f.StringVar(&ntokenFile, "ntoken-file", ntokenFile, "ntoken file to write")
-	f.StringVar(&certFile, "cert-file", certFile, `cert file to write`)
-	f.StringVar(&caCertFile, "ca-cert", caCertFile, "CA cert file to write (blank to skip the write)")
+	f.StringVar(&ntokenFile, "out-ntoken", ntokenFile, "ntoken file to write")
+	f.StringVar(&certFile, "out-cert", certFile, `cert file to write`)
+	f.StringVar(&caCertFile, "out-ca-cert", caCertFile, "CA cert file to write (blank to skip the write)")
 
-	f.StringVar(&domain, "domain", domain, "Athenz domain, required")
-	f.StringVar(&service, "service", service, "Athenz service, required")
-	f.StringVar(&dnsSuffix, "dns-suffix", dnsSuffix, "DNS suffix for CSR SAN name, required")
+	f.StringVar(&namespace, "namespace", namespace, "Pod namespace, required")
+	f.StringVar(&account, "account", account, "Service account, required")
 	f.StringVar(&identityDir, "identity-dir", identityDir, fmt.Sprintf("directory having %q and %q files", keyFileName, versionFileName))
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
 
 	err := f.Parse(args)
 	if err != nil {
+		if err == flag.ErrHelp {
+			err = errEarlyExit
+		}
 		return nil, err
 	}
 
@@ -102,17 +92,20 @@ func parseFlags(program string, args []string) (*params, error) {
 	}
 
 	if err := util.CheckFields("arguments", map[string]bool{
-		"mode":       mode == "",
-		"endpoint":   endpoint == "",
-		"domain":     domain == "",
-		"service":    service == "",
-		"dns-suffix": dnsSuffix == "",
+		"mode":      mode == "",
+		"namespace": namespace == "",
+		"account":   account == "",
 	}); err != nil {
 		return nil, err
 	}
 
 	if !(mode == "init" || mode == "refresh") {
 		return nil, fmt.Errorf("invalid mode %q must be one of init or refresh", mode)
+	}
+
+	cc, err := cp()
+	if err != nil {
+		return nil, err
 	}
 
 	ri, err := time.ParseDuration(refreshInterval)
@@ -132,14 +125,18 @@ func parseFlags(program string, args []string) (*params, error) {
 		return key, string(ver), nil
 	}
 
+	conf, err := cc.ClientTLSConfig(config.AthenzRoot)
+	domain := cc.NamespaceToDomain(namespace)
+
 	client, err := newClient(ztsConfig{
-		endpoint:   endpoint,
-		authHeader: authHeader,
+		endpoint:   cc.ZTSEndpoint,
+		tls:        conf,
+		authHeader: cc.AuthHeader,
 		ks:         keySource,
 		domain:     domain,
-		service:    service,
+		service:    account,
 		opts: util.CSROptions{
-			DNSNames: []string{fmt.Sprintf("%s.%s.%s", service, strings.Replace(domain, ".", "-", -1), dnsSuffix)},
+			DNSNames: []string{cc.ServiceURLHost(domain, account)},
 		},
 	})
 	if err != nil {
@@ -169,14 +166,14 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 			return errors.Wrap(err, "cert fetch")
 		}
 		w := util.NewWriter()
-		if err := w.Add(params.certFile, cert, 0644); err != nil {
+		if err := w.AddBytes(params.certFile, 0644, cert); err != nil {
 			return err
 		}
-		if err := w.Add(params.tokenFile, []byte(token), 0644); err != nil {
+		if err := w.AddBytes(params.tokenFile, 0644, []byte(token)); err != nil {
 			return err
 		}
 		if params.caCertFile != "" {
-			if err := w.Add(params.caCertFile, caCert, 0644); err != nil {
+			if err := w.AddBytes(params.caCertFile, 0644, caCert); err != nil {
 				return err
 			}
 		}

@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"log"
-
 	"github.com/ghodss/yaml"
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	"k8s.io/api/core/v1"
 )
-
-type serializer func(pod *v1.Pod) (map[string]string, error)
 
 type initConfig struct {
 	Name              string   `yaml:"name"`              // initializer name, must have at least 2 dots
@@ -20,6 +16,7 @@ type initConfig struct {
 	RemoveImages      []string `yaml:"removeImages"`      // images without versions to remove if found in pod
 	InitTemplate      string   `yaml:"initTemplate"`      // template YAML spec for SIA init container
 	RefreshTemplate   string   `yaml:"refreshTemplate"`   // template YAML spec for SIA refresh container
+	VolumeTemplate    string   `yaml:"volumeTemplate"`    // template for flex volume
 }
 
 func (ic *initConfig) assertValid() error {
@@ -27,15 +24,15 @@ func (ic *initConfig) assertValid() error {
 		"Name":            ic.Name == "",
 		"InitTemplate":    ic.InitTemplate == "",
 		"RefreshTemplate": ic.RefreshTemplate == "",
+		"VolumeTemplate":  ic.VolumeTemplate == "",
 	})
 }
 
 type initializer struct {
-	config     initConfig
-	serializer serializer
+	config initConfig
 }
 
-func newInitializer(config initConfig, serializer serializer) (*initializer, error) {
+func newInitializer(config initConfig) (*initializer, error) {
 	if err := config.assertValid(); err != nil {
 		return nil, err
 	}
@@ -48,9 +45,13 @@ func newInitializer(config initConfig, serializer serializer) (*initializer, err
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("bad refresh template %q", config.RefreshTemplate))
 	}
+	var templateVolume v1.Volume
+	err = yaml.Unmarshal([]byte(config.VolumeTemplate), &templateVolume)
+	if err != nil {
+		return nil, errors.Wrap(err, fmt.Sprintf("bad volume template %q", config.VolumeTemplate))
+	}
 	return &initializer{
-		config:     config,
-		serializer: serializer,
+		config: config,
 	}, nil
 }
 
@@ -59,6 +60,12 @@ func (i *initializer) Name() string {
 }
 
 func (i *initializer) Update(pod *v1.Pod) error {
+	if i.config.AnnotationTrigger != "" {
+		if pod.Annotations == nil || pod.Annotations[i.config.AnnotationTrigger] != "true" {
+			return nil // nothing to do
+		}
+	}
+
 	// filterContainers filters out any containers having the
 	// SIA or legacy image from the supplied list
 	filterContainers := func(containers []v1.Container) []v1.Container {
@@ -95,7 +102,6 @@ func (i *initializer) Update(pod *v1.Pod) error {
 
 		for k := range requiredVolumeMap {
 			if !existingVolumeMap[k] {
-				log.Println("Add volume", k)
 				pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
 					Name: k,
 					VolumeSource: v1.VolumeSource{
@@ -106,34 +112,20 @@ func (i *initializer) Update(pod *v1.Pod) error {
 		}
 	}
 
-	if i.config.AnnotationTrigger != "" {
-		if pod.Annotations == nil || pod.Annotations[i.config.AnnotationTrigger] != "true" {
-			return nil // nothing to do
-		}
-	}
-
 	pod.Spec.InitContainers = filterContainers(pod.Spec.InitContainers)
 	pod.Spec.Containers = filterContainers(pod.Spec.Containers)
 
 	var siaInitContainer, siaRefreshContainer v1.Container
+	var identityVolume v1.Volume
 
 	// errors already checked in newInitializer for unmarshals below
 	_ = yaml.Unmarshal([]byte(i.config.InitTemplate), &siaInitContainer)
 	_ = yaml.Unmarshal([]byte(i.config.RefreshTemplate), &siaRefreshContainer)
+	_ = yaml.Unmarshal([]byte(i.config.VolumeTemplate), &identityVolume)
 
-	env, err := i.serializer(pod)
-	if err != nil {
-		return err
-	}
-	// only set up the env vars for the init container
-	for k, v := range env {
-		e := v1.EnvVar{Name: k, Value: v}
-		siaInitContainer.Env = append(siaInitContainer.Env, e)
-	}
-
+	pod.Spec.Volumes = append([]v1.Volume{identityVolume}, pod.Spec.Volumes...)
 	pod.Spec.InitContainers = append([]v1.Container{siaInitContainer}, pod.Spec.InitContainers...)
 	pod.Spec.Containers = append([]v1.Container{siaRefreshContainer}, pod.Spec.Containers...)
 	addMissingVolumes(siaInitContainer, siaRefreshContainer)
-
 	return nil
 }

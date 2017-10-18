@@ -1,21 +1,17 @@
+// Package identity defines the pod identity model along with serialization semantics.
 package identity
 
 import (
 	"crypto"
 	"fmt"
-	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 const (
-	jwtAudience    = "k8s-athenz-identity"
-	envDomain      = "SIA_IN_DOMAIN"
-	envService     = "SIA_IN_SERVICE"
-	envProvider    = "SIA_IN_PROVIDER_SERVICE"
-	envIdentityDoc = "SIA_IN_IDENTITY_DOC"
-	envSANNames    = "SIA_IN_SAN_NAMES"
+	jwtAudience = "k8s-athenz-identity"
 )
 
 // SigningKey encapsulates a signing key
@@ -30,73 +26,12 @@ type SigningKey struct {
 type SigningKeyProvider func() (*SigningKey, error)
 
 // AttributeProvider provides attributes given a pod ID.
-type AttributeProvider func(podID string) (*PodAttributes, error)
+type AttributeProvider func(podID string) (*PodSubject, error)
 
-// Context is the context for the identity document.
-type Context struct {
-	Domain          string   // Athenz domain
-	Service         string   // Athenz service name
-	ProviderService string   // provider service name
-	SANNames        []string // SAN names to be registered for the TLS cert
-	InstanceID      string   // instance id returned by Athenz after initial call
-}
-
-func (c *Context) AssertValid() error {
-	return util.CheckFields("SIA context", map[string]bool{
-		"Domain":          c.Domain == "",
-		"Service":         c.Service == "",
-		"ProviderService": c.ProviderService == "",
-		"SANNames":        len(c.SANNames) == 0,
-	})
-}
-
-// SIAPayload the identity document and associated context. Can be serialized to and
-// deserialized from a map.
-type SIAPayload struct {
-	Context
-	IdentityDoc string
-}
-
-func (s *SIAPayload) assertValid() error {
-	err := s.Context.AssertValid()
-	if err != nil {
-		return err
-	}
-	if s.IdentityDoc == "" {
-		return fmt.Errorf("invalid SIA payload, no identity doc")
-	}
-	return nil
-}
-
-func (s *SIAPayload) toEnv() (map[string]string, error) {
-	if err := s.assertValid(); err != nil {
-		return nil, err
-	}
-	return map[string]string{
-		envDomain:      s.Domain,
-		envService:     s.Service,
-		envProvider:    s.ProviderService,
-		envIdentityDoc: s.IdentityDoc,
-		envSANNames:    strings.Join(s.SANNames, ","),
-	}, nil
-}
-
-func (s *SIAPayload) fromEnv(env map[string]string) error {
-	s.Context = Context{
-		Domain:          env[envDomain],
-		Service:         env[envService],
-		ProviderService: env[envProvider],
-		SANNames:        strings.Split(env[envSANNames], ","),
-	}
-	s.IdentityDoc = env[envIdentityDoc]
-	return s.assertValid()
-}
-
+// SerializerConfig is the configuration for the JWT serializer
 type SerializerConfig struct {
-	TokenExpiry     time.Duration      // JWT expiry
-	KeyProvider     SigningKeyProvider // signing mechanism
-	DNSSuffix       string             // DNS suffix for TLS SAN names
-	ProviderService string             // service name of provider
+	TokenExpiry time.Duration      // JWT expiry
+	KeyProvider SigningKeyProvider // signing mechanism
 }
 
 func (s *SerializerConfig) initDefaults() {
@@ -107,17 +42,16 @@ func (s *SerializerConfig) initDefaults() {
 
 func (s *SerializerConfig) assertValid() error {
 	return util.CheckFields("SerializerConfig", map[string]bool{
-		"KeyProvider":     s.KeyProvider == nil,
-		"DNSSuffix":       s.DNSSuffix == "",
-		"ProviderService": s.ProviderService == "",
+		"KeyProvider": s.KeyProvider == nil,
 	})
 }
 
-// Serializer serializes an SIA payload into a map of key value pairs.
+// Serializer serializes a subject into an identity document.
 type Serializer struct {
 	SerializerConfig
 }
 
+// NewSerializer returns a serializer for the supplied config.
 func NewSerializer(config SerializerConfig) (*Serializer, error) {
 	config.initDefaults()
 	if err := config.assertValid(); err != nil {
@@ -128,25 +62,12 @@ func NewSerializer(config SerializerConfig) (*Serializer, error) {
 	}, nil
 }
 
-func (s *Serializer) extractContext(attrs *PodAttributes) (*Context, error) {
-	localName := attrs.ID
-	pos := strings.LastIndex(localName, "/")
-	if pos >= 0 {
-		localName = localName[pos+1:]
+// IdentityDoc returns the identity document for the supplied subject.
+func (s *Serializer) IdentityDoc(attrs *PodSubject) (string, error) {
+	k, err := s.KeyProvider()
+	if err != nil {
+		return "", errors.Wrap(err, "key provider error")
 	}
-	dashedDomain := strings.Replace(attrs.Domain, ".", "-", -1)
-	return &Context{
-		Domain:          attrs.Domain,
-		Service:         attrs.Service,
-		ProviderService: s.ProviderService,
-		SANNames: []string{
-			fmt.Sprintf("%s.%s.%s", attrs.Service, dashedDomain, s.DNSSuffix),
-			fmt.Sprintf("%s.instanceid.athenz.%s", localName, s.DNSSuffix),
-		},
-	}, nil
-}
-
-func (s *Serializer) makeIdentityDoc(attrs *PodAttributes, k *SigningKey) (string, error) {
 	subjectURI, err := attrs.toURI()
 	if err != nil {
 		return "", err
@@ -159,43 +80,6 @@ func (s *Serializer) makeIdentityDoc(attrs *PodAttributes, k *SigningKey) (strin
 		k,
 		s.TokenExpiry,
 	)
-}
-
-func (s *Serializer) Serialize(attrs *PodAttributes) (map[string]string, error) {
-	ctx, err := s.extractContext(attrs)
-	if err != nil {
-		return nil, err
-	}
-
-	k, err := s.KeyProvider()
-	if err != nil {
-		return nil, err
-	}
-
-	doc, err := s.makeIdentityDoc(attrs, k)
-	if err != nil {
-		return nil, err
-	}
-	payload := &SIAPayload{
-		Context:     *ctx,
-		IdentityDoc: doc,
-	}
-	p, err := payload.toEnv()
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-func PayloadFromEnvironment(env map[string]string) (*SIAPayload, error) {
-	if env == nil {
-		return nil, fmt.Errorf("illegal argument: nil map for deserialization")
-	}
-	payload := &SIAPayload{}
-	if err := payload.fromEnv(env); err != nil {
-		return nil, err
-	}
-	return payload, nil
 }
 
 // PublicKeyProvider returns public keys corresponding to an issuer URI
@@ -219,6 +103,7 @@ type Verifier struct {
 	VerifierConfig
 }
 
+// NewVerifier returns a verifier for the supplied config.
 func NewVerifier(config VerifierConfig) (*Verifier, error) {
 	if err := config.assertValid(); err != nil {
 		return nil, err
@@ -228,7 +113,9 @@ func NewVerifier(config VerifierConfig) (*Verifier, error) {
 	}, nil
 }
 
-func (v *Verifier) VerifyDoc(identityDoc string) (*PodAttributes, error) {
+// VerifyDoc verifies the supplied identity doc for signature and attributes
+// using the attribute provider.
+func (v *Verifier) VerifyDoc(identityDoc string) (*PodSubject, error) {
 	jwt, err := verifyJWT(identityDoc, v.PublicKeyProvider)
 	if err != nil {
 		return nil, err

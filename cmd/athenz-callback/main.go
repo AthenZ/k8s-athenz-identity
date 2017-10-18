@@ -4,11 +4,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -19,16 +17,17 @@ import (
 	"time"
 
 	"github.com/dimfeld/httptreemux"
-	"github.com/yahoo/k8s-athenz-identity/internal/common"
+	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/keys"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
-var errEarlyExit = errors.New("early exit")
+var errEarlyExit = fmt.Errorf("early exit")
 
 // Version gets set by the build script via LDFLAGS
 var Version string
@@ -55,33 +54,26 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
 func parseFlags(clusterConfig *rest.Config, program string, args []string) (*params, error) {
 	var (
-		addr          = envOrDefault("ATHENZ_CB_LISTEN_ADDR", ":4443")
-		adminDomain   = envOrDefault("ATHENZ_CB_ADMIN_DOMAIN", "k8s.admin")
-		keyFile       = envOrDefault("ATHENZ_CB_KEY_FILE", "/var/tls/athenz/private/service.key")
-		certFile      = envOrDefault("ATHENZ_CB_CERT_FILE", "/var/tls/athenz/public/service.cert")
-		caCertFile    = envOrDefault("ATHENZ_CB_CA_CERT_FILE", "")
-		publicKeyDir  = envOrDefault("ATHENZ_CB_PUBLIC_KEYS_DIR", "/var/keys/public")
-		shutdownGrace = envOrDefault("ATHENS_CB_SHUTDOWN_GRACE", "10s")
+		addr          = util.EnvOrDefault("ADDR", ":4443")
+		keyFile       = util.EnvOrDefault("KEY_FILE", "/var/tls/athenz/private/service.key")
+		certFile      = util.EnvOrDefault("CERT_FILE", "/var/tls/athenz/public/service.cert")
+		publicKeyDir  = util.EnvOrDefault("PUBLIC_KEYS_DIR", "/var/keys/public")
+		ztsCommonName = util.EnvOrDefault("ZTS_COMMON_NAME", "zts.example.cloud")
+		shutdownGrace = util.EnvOrDefault("SHUTDOWN_GRACE", "10s")
+		secretName    = util.EnvOrDefault("SECRET_PREFIX", "athenz-init-secret")
 	)
 
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&addr, "listen", addr, "[<ip>]:<port> to listen on")
-	f.StringVar(&keyFile, "tls-key", keyFile, "path to TLS key")
-	f.StringVar(&certFile, "tls-cert", certFile, "path to TLS cert")
-	f.StringVar(&caCertFile, "ca-cert", caCertFile, "path to CA cert")
+	f.StringVar(&keyFile, "key", keyFile, "path to key file")
+	f.StringVar(&certFile, "cert", certFile, "path to cert file")
 	f.StringVar(&publicKeyDir, "sign-pub-dir", publicKeyDir, "directory containing public signing keys")
-	f.StringVar(&adminDomain, "admin-domain", adminDomain, "athenz admin domain for cluster")
+	f.StringVar(&secretName, "secret-name", secretName, "file prefix for public key files")
+	f.StringVar(&ztsCommonName, "zts-name", ztsCommonName, "common name to verify in Athenz TLS cert")
 	f.StringVar(&shutdownGrace, "shutdown-grace", shutdownGrace, "grace period for connections to drain at shutdown")
+	cp := config.CmdLine(f)
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
@@ -104,6 +96,11 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, fmt.Errorf("invalid shutdown grace %q, %v", shutdownGrace, err)
 	}
 
+	cc, err := cp()
+	if err != nil {
+		return nil, err
+	}
+
 	if clusterConfig == nil {
 		clusterConfig, err = rest.InClusterConfig()
 		if err != nil {
@@ -116,10 +113,27 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, fmt.Errorf("unable to create clientset, %v", err)
 	}
 
-	publicSource := keys.NewPublicKeySource(publicKeyDir, common.AthensInitSecret)
-	a := &common.Attributes{AdminDomain: adminDomain}
+	serviceIPProvider := func(domain, service string) (x string, _ error) {
+		defer func() {
+			log.Println("SIP for ", domain, "/", service, "=", x, err)
+		}()
+		ns := cc.DomainToNamespace(domain)
+		svc, err := cs.CoreV1().Services(ns).Get(service, meta_v1.GetOptions{})
+		if err == nil {
+			return svc.Spec.ClusterIP, nil
+		}
+		if e, ok := err.(*errors.StatusError); ok {
+			if e.Status().Code == http.StatusNotFound {
+				return "", nil
+			}
+		}
+		return "", err
+	}
+
+	publicSource := keys.NewPublicKeySource(publicKeyDir, secretName)
+	mapper := identity.NewMapper(cc, serviceIPProvider)
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
-		AttributeProvider: func(podID string) (*identity.PodAttributes, error) {
+		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
 			parts := strings.SplitN(podID, "/", 2)
 			if len(parts) < 2 {
 				return nil, fmt.Errorf("invalid pod id %q, want namespace/name", podID)
@@ -128,7 +142,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 			if err != nil {
 				return nil, err
 			}
-			return a.Pod2Attributes(pod)
+			return mapper.GetSubject(pod)
 		},
 		PublicKeyProvider: publicSource.PublicKey,
 	})
@@ -136,39 +150,29 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, err
 	}
 
-	reloader, err := util.NewCertReloader(util.ReloadConfig{
-		CertFile: certFile,
-		KeyFile:  keyFile,
-	})
+	conf, closer, err := cc.ServerTLSConfig(
+		config.Credentials{
+			KeyFile:  keyFile,
+			CertFile: certFile,
+		},
+		config.VerifyClient{
+			Source: config.AthenzRoot,
+			Allow: func(cert *x509.Certificate) bool {
+				return cert.Subject.CommonName == ztsCommonName
+			},
+		})
 	if err != nil {
 		return nil, err
 	}
 
-	var pool *x509.CertPool
-	if caCertFile != "" {
-		pem, err := ioutil.ReadFile(caCertFile)
-		if err != nil {
-			return nil, fmt.Errorf("CA cert %s, %v", caCertFile, err)
-		}
-		pool = x509.NewCertPool()
-		ok := pool.AppendCertsFromPEM(pem)
-		if !ok {
-			return nil, fmt.Errorf("unable to load any CA certs from %s", caCertFile)
-		}
-	}
-
 	return &params{
 		addr: addr,
-		handler: &handler{
+		handler: util.NewAccessLogHandler(&handler{
 			verifier: verifier,
-		},
-		tls: &tls.Config{
-			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return reloader.GetLatestCertificate()
-			},
-			ClientCAs: pool,
-		},
+		}),
+		tls:           conf,
 		shutdownGrace: sg,
+		closers:       []io.Closer{closer},
 	}, nil
 }
 

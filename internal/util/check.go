@@ -5,6 +5,8 @@ import (
 	"sort"
 )
 
+// CheckFields checks the map for any true values and returns an error
+// that includes the type name and missing attribute names.
 func CheckFields(typeName string, failedChecks map[string]bool) error {
 	var missing []string
 	for k, v := range failedChecks {

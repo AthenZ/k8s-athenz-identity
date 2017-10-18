@@ -1,0 +1,11 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: athenz-jwt-service
+spec:
+  selector:
+    app: athenz-jwt-service
+  ports:
+  - protocol: TCP
+    port: 4443
+    targetPort: 4443

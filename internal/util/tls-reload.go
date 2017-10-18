@@ -13,6 +13,7 @@ import (
 
 var defaultPollInterval = 5 * time.Minute // default that can be customized in tests
 
+// LogFn allows customized logging.
 type LogFn func(format string, args ...interface{})
 
 // CertReloader reloads the (key, cert) pair from the filesystem when

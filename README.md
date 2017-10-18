@@ -2,24 +2,10 @@ k8s-athenz-identity
 ==========
 
 Control plane components to securely provide [Athenz](https://github.com/yahoo/athenz) identities to 
-[Kubernetes](https://kubernetes.io/) application  workloads. See the [launch flow doc](launch-flow.md) for a detailed 
-description of the end to end flow.
+[Kubernetes](https://kubernetes.io/) application workloads. See the [design document](DESIGN.md) for a detailed 
+description of the end to end flow. Read the [components doc](COMPONENTS.md) for details on every component.
 
 Works on k8s version 1.8 or above.
-
-Components
-----
-
-Note: `sia` is jargon for "Service Identity Agent".
-
-| Name | Description |
-| ---- | ----------- |
-| athenz-initializer | k8s initializer that watches pods and injects containers with identity documents into pod specs |
-| athenz-callback | implements the provider callback endpoint for Athenz |
-| athenz-sia | container that knows how to unpack identity information and request credentials from Athenz |
-| athenz-control-sia | container that can retrieve TLS certs from Athenz using its own service key (control plane bootstrap) |
-
-Also includes an insecure mock implementation of relevant Athenz APIs for local testing, as well as a test app.
 
 Build
 -----
@@ -32,20 +18,30 @@ $ cd k8s-athenz-identity
 $ make
 ```
 
+Testing
+-----
+
+For my tests, I have set up a single node k8s cluster on a bare-metal box. Cluster created using kubeadm with
+the `Noschedule` taint removed from the master and extra alpha flags for new features for the API.
+
+There is a one command `setup` and `teardown` in the `k8s` folder that do everything. 
+Your mileage in getting this to work may vary :)
+
+In any case, you can see all the moving parts by inspecting the [setup script](k8s/setup.sh) and all the YAML files
+for the configmaps, deployments and daemonsets.
+
 Discussion points
 ----
 
-* Identity doc in plaintext as environment variable. Discuss implications.
 * High-availability of initializer using leader election. Pod launches will be blocked if initializer fails.
-* Handling replay attacks for callback endpoint
-* Pod IP is not validated. Athenz team looking at enhancing callback to include client IP and SAN IPs requested in the CSR
-  as attributes in the extra bag of data given to provider. Ticket: ATHENS-3546
+* Handling replay attacks for identity/ callback endpoint
+* Pod IP is not validated against SANS IPs requested for certificate. Athenz team looking at enhancing callback to 
+  include client IP and SAN IPs requested in the CSR as attributes in the extra bag of data given to provider. Ticket: ATHENS-3546
 
 TODOs
 ----
 
+* Admission controller that enforces initializer for user apps, does not allow random workloads to use the custom volume driver etc.
 * Ordering of initializer configuration and deployment of initializer still matters. Will be an upgrade issue. Investigate.
 * Dynamic refresh intervals for both control and data plane SIA
 * Deployment strategy for provider callback in the face of network ACLs etc.
-* Mutual TLS on callback to ensure caller is Athenz
-* Add PodIP to SAN for the CSR

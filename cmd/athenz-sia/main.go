@@ -1,28 +1,26 @@
 package main
 
 import (
-	"crypto/tls"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/internal/identity"
+	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"golang.org/x/net/context"
 )
 
-var errEarlyExit = errors.New("early exit")
+var errEarlyExit = fmt.Errorf("early exit")
 
 // Version gets set by the build script via LDFLAGS
 var Version string
@@ -34,19 +32,6 @@ func getVersion() string {
 	return Version
 }
 
-func getPayload() (*identity.SIAPayload, error) {
-	envMap := map[string]string{}
-	for _, s := range os.Environ() {
-		parts := strings.SplitN(s, "=", 2)
-		if len(parts) == 2 {
-			envMap[parts[0]] = parts[1]
-		} else {
-			envMap[parts[0]] = ""
-		}
-	}
-	return identity.PayloadFromEnvironment(envMap)
-}
-
 type artifacts struct {
 	tokenFile  string
 	keyFile    string
@@ -55,10 +40,8 @@ type artifacts struct {
 }
 
 type params struct {
-	endpoint  string
-	ips       []net.IP
+	client    ident.Client
 	init      bool
-	stateFile string
 	artifacts artifacts
 	refresh   time.Duration
 	closers   []io.Closer
@@ -71,97 +54,35 @@ func (p *params) Close() error {
 	return nil
 }
 
-func envOrDefault(name string, defaultValue string) string {
-	v := os.Getenv(name)
-	if v == "" {
-		return defaultValue
-	}
-	return v
-}
-
-func getPodIP() (net.IP, error) {
-	xfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, fmt.Errorf("unable to get network interfaces, %v", err)
-	}
-	for _, x := range xfaces {
-		if x.Flags&net.FlagLoopback > 0 { // loopback, ignore
-			continue
-		}
-		if x.Flags&net.FlagUp == 0 { // not up
-			continue
-		}
-		addrs, err := x.Addrs()
-		if err != nil {
-			log.Printf("unable to get addresses for interface %v, %v", x, err)
-			continue
-		}
-		for _, a := range addrs {
-			as := a.String()
-			ip, _, err := net.ParseCIDR(as)
-			if err != nil {
-				log.Printf("unable to parse address %s for interface %v, %v", as, x, err)
-				continue
-			}
-			if ip.To4() == nil {
-				continue
-			}
-			return ip, nil
-		}
-	}
-	return nil, fmt.Errorf("unable to get pod IP from any interface")
-}
-
-func getSANIPs(override string) ([]net.IP, error) {
-	var ip net.IP
-	var err error
-	if override != "" {
-		ip = net.ParseIP(override)
-		if ip == nil {
-			return nil, fmt.Errorf("unable to parse override IP %q", override)
-		}
-	} else {
-		ip, err = getPodIP()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return []net.IP{ip}, nil
-}
-
 func parseFlags(program string, args []string) (*params, error) {
 	var (
 		mode            = ""
-		endpoint        = envOrDefault("SIA_ZTS_ENDPOINT", "")
-		authHeader      = envOrDefault("SIA_AUTH_HEADER", "Athenz-Principal-Auth")
-		refreshInterval = envOrDefault("SIA_REFRESH_INTERVAL", "1h")
-		podIP           = envOrDefault("SIA_POD_IP", "")
-		stateFile       = envOrDefault("SIA_STATE_FILE", "/tmp/sia-state.json")
-		ntokenFile      = envOrDefault("SIA_OUT_TOKEN_FILE", "/tokens/ntoken")
-		keyFile         = envOrDefault("SIA_OUT_KEY_FILE", "/var/tls/athenz/service.key")
-		certFile        = envOrDefault("SIA_OUT_CERT_FILE", "/var/tls/athenz/service.cert")
-		caCertFile      = envOrDefault("SIA_OUT_CA_CERT_FILE", "/var/tls/athenz/cacert.pem")
-		instanceFile    = envOrDefault("SIA_OUT_INSTANCE_FILE", "/var/tls/athenz/instance.id")
+		idFile          = util.EnvOrDefault("ID_FILE", "/identity/id")
+		endpoint        = util.EnvOrDefault("ENDPOINT", "unix:///identity/connect/agent.sock")
+		refreshInterval = util.EnvOrDefault("REFRESH_INTERVAL", "1h")
+		ntokenFile      = util.EnvOrDefault("TOKEN_FILE", "/tokens/ntoken")
+		keyFile         = util.EnvOrDefault("KEY_FILE", "/tls/service.key")
+		certFile        = util.EnvOrDefault("CERT_FILE", "/tls/service.cert")
+		caCertFile      = util.EnvOrDefault("CA_CERT_FILE", "/tls/cacert.pem")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
-	f.StringVar(&endpoint, "endpoint", endpoint, "ZTS endpoint with /v1 path, required")
-	f.StringVar(&podIP, "pod-ip", podIP, "use pod IP passed in for certificate, default is current IP")
-	f.StringVar(&authHeader, "auth-header", authHeader, "Athenz auth header name")
+	f.StringVar(&idFile, "id-file", idFile, "file containing hashed pod id")
+	f.StringVar(&endpoint, "endpoint", endpoint, "TCP or socket endpoint for identity agent")
 	f.StringVar(&refreshInterval, "refresh-interval", refreshInterval, "cert refresh interval")
-	f.StringVar(&stateFile, "state-file", stateFile, "state file to write for refresh context")
-	f.StringVar(&ntokenFile, "ntoken-file", ntokenFile, "ntoken file to write")
-	f.StringVar(&certFile, "cert-file", certFile, "cert file to write")
-	f.StringVar(&caCertFile, "ca-cert-file", caCertFile, "CA cert file to write")
-
-	f.StringVar(&keyFile, "key-file", keyFile, "key file to write")
-	f.StringVar(&instanceFile, "instance-file", instanceFile, "instance ID file to write")
+	f.StringVar(&ntokenFile, "out-ntoken", ntokenFile, "ntoken file to write")
+	f.StringVar(&certFile, "out-cert", certFile, "cert file to write")
+	f.StringVar(&caCertFile, "out-ca-cert", caCertFile, "CA cert file to write")
+	f.StringVar(&keyFile, "out-key", keyFile, "key file to write")
 
 	var showVersion bool
 	f.BoolVar(&showVersion, "version", false, "Show version information")
 
 	err := f.Parse(args)
 	if err != nil {
+		if err == flag.ErrHelp {
+			err = errEarlyExit
+		}
 		return nil, err
 	}
 
@@ -186,15 +107,23 @@ func parseFlags(program string, args []string) (*params, error) {
 		return nil, fmt.Errorf("invalid refresh interval %q, %v", refreshInterval, err)
 	}
 
-	ips, err := getSANIPs(podIP)
+	id, err := ioutil.ReadFile(idFile)
+	if err != nil {
+		return nil, errors.Wrap(err, "read ID file")
+	}
+	dialer, err := util.NewDialer(endpoint)
 	if err != nil {
 		return nil, err
 	}
-
+	c := ident.NewClient("http://socket.path/v1", string(id), &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(c context.Context, _, _ string) (net.Conn, error) {
+				return dialer(c)
+			},
+		},
+	})
 	return &params{
-		endpoint:  endpoint,
-		ips:       ips,
-		stateFile: stateFile,
+		client: c,
 		artifacts: artifacts{
 			tokenFile:  ntokenFile,
 			keyFile:    keyFile,
@@ -213,94 +142,54 @@ func run(program string, args []string, stopChan <-chan struct{}) error {
 	}
 	defer params.Close()
 
-	writeFiles := func(identity *zts.InstanceIdentity, keyPEM []byte, cert *tls.Certificate) error {
+	writeFiles := func(id *ident.Identity) error {
 		w := util.NewWriter()
 		a := params.artifacts
-		if err := w.Add(a.certFile, []byte(identity.X509Certificate), 0644); err != nil {
+		if err := w.AddBytes(a.certFile, 0644, id.CertPEM); err != nil {
 			return err
 		}
-		if err := w.Add(a.keyFile, keyPEM, 0644); err != nil { // TODO: finalize perms and user
+		if err := w.AddBytes(a.keyFile, 0644, id.KeyPEM); err != nil { // TODO: finalize perms and user
 			return err
 		}
-		if a.caCertFile != "" {
-			if err := w.Add(a.caCertFile, []byte(identity.X509CertificateSigner), 0644); err != nil {
+		if len(id.CACertPem) != 0 {
+			if err := w.AddBytes(a.caCertFile, 0644, id.CACertPem); err != nil {
 				return err
 			}
 		}
-		if err := w.Add(a.tokenFile, []byte(identity.ServiceToken), 0644); err != nil {
+		if err := w.AddBytes(a.tokenFile, 0644, []byte(id.NToken)); err != nil {
 			return err
 		}
 		return w.Save()
 	}
 
-	writeStateFile := func(c identity.Context) error {
-		b, err := json.Marshal(c)
-		if err != nil {
-			return err
-		}
-		return ioutil.WriteFile(params.stateFile, b, 0644)
-	}
-
-	readStateFile := func() (identity.Context, error) {
-		var c identity.Context
-		b, err := ioutil.ReadFile(params.stateFile)
-		if err != nil {
-			return c, err
-		}
-		if err := json.Unmarshal(b, &c); err != nil {
-			return c, err
-		}
-		if err := c.AssertValid(); err != nil {
-			return c, fmt.Errorf("bad context in state file, %v", err)
-		}
-		if c.InstanceID == "" {
-			return c, fmt.Errorf("context did not have an instance ID")
-		}
-		return c, nil
-	}
-
 	if params.init {
-		payload, err := getPayload()
+		ident, err := params.client.Init()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "client.Init")
 		}
-		z := newZTS(params.endpoint, payload.Context, params.ips)
-		id, key, cert, err := z.getIdentity(payload.IdentityDoc)
-		if err != nil {
-			return err
-		}
-		payload.Context.InstanceID = string(id.InstanceId)
-		if err := writeStateFile(payload.Context); err != nil {
-			return err
-		}
-		return writeFiles(id, key, cert)
+		return writeFiles(ident)
 	}
 
-	context, err := readStateFile()
+	keyPEM, err := ioutil.ReadFile(params.artifacts.keyFile)
 	if err != nil {
-		return fmt.Errorf("readStateFile: %v", err)
+		return errors.Wrap(err, "read key file")
 	}
-	certBytes, err := ioutil.ReadFile(params.artifacts.certFile)
+	certPEM, err := ioutil.ReadFile(params.artifacts.certFile)
 	if err != nil {
-		return err
-	}
-	keyBytes, err := ioutil.ReadFile(params.artifacts.keyFile)
-	if err != nil {
-		return err
-	}
-	cert, err := tls.X509KeyPair(certBytes, keyBytes)
-	if err != nil {
-		return err
+		return errors.Wrap(err, "read cert file")
 	}
 
-	z := newZTS(params.endpoint, context, params.ips)
 	refresh := func() error {
-		id, key, newCert, err := z.refreshIdentity(&cert)
+		id, err := params.client.Refresh(ident.RefreshRequest{
+			KeyPEM:  keyPEM,
+			CertPEM: certPEM,
+		})
 		if err != nil {
 			return err
 		}
-		cert = *newCert
-		return writeFiles(id, key, newCert)
+		keyPEM = id.KeyPEM
+		certPEM = id.CertPEM
+		return writeFiles(id)
 	}
 
 	t := time.NewTicker(params.refresh)

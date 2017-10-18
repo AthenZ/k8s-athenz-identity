@@ -6,30 +6,36 @@ data:
   init-config: |
     name: athenz.initializer.kubernetes.io
     annotationTrigger: initializer.kubernetes.io/athenz
+
+    volumeTemplate: |
+      name: sia-identity
+      flexVolume:
+        driver: "athenz.kubernetes.io/athenz-volume-driver"
+
     initTemplate: |
         name: sia-init
         image: local/k8s-athenz-sia:latest
         imagePullPolicy: Never
         command: ["/usr/bin/athenz-sia"]
-        args: [ "--mode=init", "--endpoint=http://mock-athenz.kube-system/zts/v1", "--state-file=/var/sia/state/state.json" ]
+        args: [ "--mode=init", "--endpoint=unix:///identity/connect/agent.sock" ]
         resources:
           limits:   { cpu: "1000m", memory: "512Mi" }
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
-        - { name: ntoken,    mountPath: /tokens }
-        - { name: tlscerts,  mountPath: /var/tls/athenz }
-        - { name: state,     mountPath: /var/sia/state }
+        - { name: ntoken,       mountPath: /tokens }
+        - { name: tlscerts,     mountPath: /tls }
+        - { name: sia-identity, mountPath: /identity }
 
     refreshTemplate: |
         name: sia-refresh
         image: local/k8s-athenz-sia:latest
         imagePullPolicy: Never
         command: ["/usr/bin/athenz-sia"]
-        args: [ "--mode=refresh", "--endpoint=http://mock-athenz.kube-system/zts/v1", "--state-file=/var/sia/state/state.json" ]
+        args: [ "--mode=refresh", "--endpoint=unix:///identity/connect/agent.sock" ]
         resources:
           limits:   { cpu: "1000m", memory: "512Mi" }
           requests: { cpu:  "100m", memory:  "64Mi" }
         volumeMounts:
-        - { name: ntoken,    mountPath: /tokens }
-        - { name: tlscerts,  mountPath: /var/tls/athenz }
-        - { name: state,     mountPath: /var/sia/state, readOnly: true }
+        - { name: ntoken,       mountPath: /tokens }
+        - { name: tlscerts,     mountPath: /tls }
+        - { name: sia-identity, mountPath: /identity }
