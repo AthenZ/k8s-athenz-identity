@@ -2,14 +2,13 @@ package identity
 
 import (
 	"fmt"
+	"log"
 	"net/url"
-
-	"k8s.io/api/core/v1"
 
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
-	"go.corp.yahoo.com/clusterville/log"
+	"k8s.io/api/core/v1"
 )
 
 const (

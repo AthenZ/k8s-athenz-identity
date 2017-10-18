@@ -17,7 +17,7 @@ section "Setup base paths on node"
 # This stuff is not yet configurable, must be the correct paths
 for dir in   /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver/  \
              /var/athenz/volumes \
-             /var/athenz/driver \
+             /var/athenz/agent \
              /var/athenz/node/identity
 do
     if [[ ! -d $dir ]]
