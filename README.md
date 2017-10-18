@@ -3,7 +3,7 @@ k8s-athenz-identity
 
 Control plane components to securely provide [Athenz](https://github.com/yahoo/athenz) identities to 
 [Kubernetes](https://kubernetes.io/) application workloads. See the [design document](DESIGN.md) for a detailed 
-description of the end to end flow.
+description of the end to end flow. Read the [components doc](COMPONENTS.md) for details on every component.
 
 Works on k8s version 1.8 or above.
 

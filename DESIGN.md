@@ -33,20 +33,21 @@
   * Service names do not need mapping and can be used in both places as-is.
 * A Kubernetes pod has a service identity derived from the namespace that it runs in and the service account used to
   launch it. The service account should have the same name as the service that is used to route to pods.
-* There is no notion of container identity (yet).
+* There is no notion of container identity.
 
 ### TLS identities
 
 A TLS cert for an Athenz service has the following characteristics.
 
 * A common name that is the equal to `<athenz-domain><DOT><athenz-service>` (e.g. `media.sports.frontend`)
-* 2 SAN names constructed as follows:
+* 2 DNS SAN names constructed as follows:
     * `<service><DOT><mangled-domain><DOT><dns-suffix>`
     * `<unique-id><DOT>instanceid.athenz<DOT><dns-suffix>`
 
   where `dns-suffix` is a suffix that is allocated per provider service. This should be arranged to be the same
   as the DNS suffix used for kube-dns for the cluster. `mangled-domain` is the domain with dots replaced with
   dashes and literal dashes turned into double dashes.
+* SAN IPs for pod IP and service IP (if one exists at pod creation)
 
 ### Service identity bootstrap
 
@@ -75,7 +76,8 @@ A TLS cert for an Athenz service has the following characteristics.
 
 ### Identity document
 
-The identity document is a JWT that looks as follows:
+The identity document is a JWT that looks as follows. It is completely ephemeral and never written to disk/
+environment variables etc.
 
 #### Header
 
@@ -99,4 +101,14 @@ The identity document is a JWT that looks as follows:
 }
 ```
 
+### Pod subject
+
+A pod subject encapsulates all attributes that need to be verified for a pod and can be serialized to and
+deserialized from a URI. The attributes are:
+
+* Pod namespace and name
+* Athenz domain (from namespace) and service name (from the service account)
+* Pod IP (from kubelet metadata and API metadata for verification)
+* Service IP (of the service having the same namespace/ name as the service account, DNS lookup on node,
+  service object lookup for verification)
 

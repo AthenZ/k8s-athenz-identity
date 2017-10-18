@@ -79,6 +79,9 @@ func parseFlags(program string, args []string) (*params, error) {
 
 	err := f.Parse(args)
 	if err != nil {
+		if err == flag.ErrHelp {
+			err = errEarlyExit
+		}
 		return nil, err
 	}
 

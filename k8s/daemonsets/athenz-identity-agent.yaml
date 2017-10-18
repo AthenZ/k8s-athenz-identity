@@ -17,7 +17,7 @@ spec:
       volumes:
       - { name: config-volume, configMap: { name: athenz-config } }
       - { name: identity-dir, hostPath: { path: /var/athenz/node/identity, type: Directory } }
-      - { name: volume-source, hostPath: { path: /var/athenz/driver } }
+      - { name: volume-source, hostPath: { path: /var/athenz/volumes } }
       - { name: driver-dir, hostPath: { path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver, type: Directory } }
       - { name: agent-dir, hostPath: { path: /var/athenz/agent, type: Directory } }
       containers:
@@ -37,7 +37,7 @@ spec:
         - { name: config-volume,  mountPath: /var/cluster, readOnly: true}
         - { name: driver-dir,     mountPath: /driver-mount }
         - { name: agent-dir,      mountPath: /var/athenz/agent }
-        - { name: volume-source,  mountPath: /var/athenz/driver  }
+        - { name: volume-source,  mountPath: /var/athenz/volumes  }
         - { name: identity-dir,   mountPath: /var/athenz/node/identity, readOnly: true }
   updateStrategy:
     type: RollingUpdate

@@ -15,9 +15,9 @@ var defaultPollInterval = 5 * time.Minute // default that can be customized in t
 
 type LogFn func(format string, args ...interface{})
 
-// certReloader reloads the (key, cert) pair from the filesystem when
+// CertReloader reloads the (key, cert) pair from the filesystem when
 // the cert file is updated.
-type certReloader struct {
+type CertReloader struct {
 	l        sync.RWMutex
 	certFile string
 	keyFile  string
@@ -28,7 +28,7 @@ type certReloader struct {
 }
 
 // GetLatestCertificate returns the latest known certificate.
-func (w *certReloader) GetLatestCertificate() (*tls.Certificate, error) {
+func (w *CertReloader) GetLatestCertificate() (*tls.Certificate, error) {
 	w.l.RLock()
 	c := w.cert
 	w.l.RUnlock()
@@ -36,12 +36,12 @@ func (w *certReloader) GetLatestCertificate() (*tls.Certificate, error) {
 }
 
 // Close stops the background refresh.
-func (w *certReloader) Close() error {
+func (w *CertReloader) Close() error {
 	w.stop <- struct{}{}
 	return nil
 }
 
-func (w *certReloader) maybeReload() error {
+func (w *CertReloader) maybeReload() error {
 	st, err := os.Stat(w.certFile)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("unable to stat %s", w.certFile))
@@ -61,7 +61,7 @@ func (w *certReloader) maybeReload() error {
 	return nil
 }
 
-func (w *certReloader) pollRefresh() error {
+func (w *CertReloader) pollRefresh() error {
 	poll := time.NewTicker(time.Duration(defaultPollInterval))
 	defer poll.Stop()
 	for {
@@ -83,13 +83,13 @@ type ReloadConfig struct {
 	Logger   LogFn  // custom log function for errors, optional
 }
 
-// newCertReloader returns a certReloader that reloads the (key, cert) pair whenever
+// newCertReloader returns a CertReloader that reloads the (key, cert) pair whenever
 // the cert file changes on the filesystem.
-func NewCertReloader(config ReloadConfig) (*certReloader, error) {
+func NewCertReloader(config ReloadConfig) (*CertReloader, error) {
 	if config.Logger == nil {
 		config.Logger = log.Printf
 	}
-	r := &certReloader{
+	r := &CertReloader{
 		certFile: config.CertFile,
 		keyFile:  config.KeyFile,
 		logger:   config.Logger,

@@ -1,7 +1,7 @@
 package ident
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,7 +16,7 @@ import (
 // TODO: allow for config file to configure these paths
 
 var (
-	hostVolumeSource = "/var/athenz/driver" // the root directory under which we create flex volumes
+	hostVolumeSource = "/var/athenz/volumes" // the root directory under which we create flex volumes
 )
 
 // podIdentifier identifies a pod for a volume.
@@ -39,11 +39,11 @@ func (p *podIdentifier) AssertValid() error {
 // This looks as follows:
 //
 //   host-root
-//     + volume-root     <- SHA1 hash of mount-path
+//     + volume-root     <- SHA256 hash of mount-path
 //        - data.json    <- contains pod attributes, not visible inside pod
 //        - context.json <- contains identity context for ZTS calls, written by agent
 //        + mount        <- the directory that is mounted to path
-//          + connect    <- symlink to agent directory containing host socket
+//          + connect    <- bind mount of agent directory containing host socket
 //          - id         <- file containing the mount path hash to be used by pod client as identifier
 //
 // The client in the container where this volume is mounted is expected to POST to the socket
@@ -54,7 +54,7 @@ type IdentityVolume struct {
 
 // NewIdentityVolume returns an identity FS for the supplied mount path.
 func NewIdentityVolume(mountPath string) *IdentityVolume {
-	hash := sha1.New()
+	hash := sha256.New()
 	hash.Write([]byte(mountPath))
 	h := hash.Sum(nil)
 	root := base64.RawURLEncoding.EncodeToString(h)
