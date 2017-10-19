@@ -45,8 +45,11 @@ func (z *ztsClient) generateKeyAndCSR() (keyPEM, csrPEM []byte, err error) {
 	ctx := z.context
 	cn := fmt.Sprintf("%s.%s", ctx.Domain, ctx.Service)
 	return util.GenerateKeyAndCSR(cn, util.CSROptions{
-		DNSNames:    ctx.SANNames,
-		IPAddresses: z.sanIPs,
+		SANs: util.SubjectAlternateNames{
+			DNSNames:    ctx.SANNames,
+			IPAddresses: z.sanIPs,
+			URIs:        ctx.SANURIs,
+		},
 	})
 }
 

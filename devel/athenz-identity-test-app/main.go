@@ -16,6 +16,7 @@ type certInfo struct {
 	CommonName string   `json:"commonName"`
 	DNSNames   []string `json:"dnsNames"`
 	DNSIPs     []string `json:"ips"`
+	URIs       []string `json:"uris"`
 }
 
 type field struct {
@@ -49,6 +50,11 @@ func main() {
 			}
 			for _, ip := range c.IPAddresses {
 				info.DNSIPs = append(info.DNSIPs, ip.String())
+			}
+			sans, err := util.UnmarshalSANs(c.Extensions)
+			log.Println(sans, err)
+			for _, u := range sans.URIs {
+				info.URIs = append(info.URIs, u.String())
 			}
 		}
 	}

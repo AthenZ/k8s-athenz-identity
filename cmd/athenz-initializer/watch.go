@@ -97,12 +97,9 @@ func (w *watcher) maybeInit(pod *v1.Pod) (ferr error) {
 	}
 
 	log.Printf("initializing pod %s/%s", pod.Namespace, pod.Name)
-	o, err := runtime.NewScheme().DeepCopy(pod)
-	if err != nil {
-		return errors.Wrap(err, "deep copy")
-	}
-	newPod := o.(*v1.Pod)
-	err = w.initializer.Update(newPod)
+	newPod := pod.DeepCopy()
+
+	err := w.initializer.Update(newPod)
 	if err != nil {
 		return errors.Wrap(err, fmt.Sprintf("initializer error for %s/%s", newPod.Namespace, newPod.Name))
 	}

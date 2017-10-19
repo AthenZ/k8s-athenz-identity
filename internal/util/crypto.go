@@ -6,9 +6,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
 	"net"
+	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -23,10 +27,46 @@ const (
 	ECDSA
 )
 
+// SubjectAlternateNames contains the SAN entities in a cert.
+type SubjectAlternateNames struct {
+	DNSNames       []string
+	IPAddresses    []net.IP
+	URIs           []url.URL
+	EmailAddresses []string
+}
+
+func (s *SubjectAlternateNames) IsEmpty() bool {
+	return len(s.DNSNames) == 0 && len(s.IPAddresses) == 0 && len(s.EmailAddresses) == 0 && len(s.URIs) == 0
+}
+
+func (s SubjectAlternateNames) String() string {
+	var snips []string
+	if len(s.DNSNames) > 0 {
+		snips = append(snips, fmt.Sprintf("DNS: %s", strings.Join(s.DNSNames, ", ")))
+	}
+	if len(s.IPAddresses) > 0 {
+		var list []string
+		for _, ip := range s.IPAddresses {
+			list = append(list, ip.String())
+		}
+		snips = append(snips, fmt.Sprintf("DNS: %s", strings.Join(list, ", ")))
+	}
+	if len(s.URIs) > 0 {
+		var list []string
+		for _, u := range s.URIs {
+			list = append(list, u.String())
+		}
+		snips = append(snips, fmt.Sprintf("URI: %s", strings.Join(list, ", ")))
+	}
+	if len(s.EmailAddresses) > 0 {
+		snips = append(snips, fmt.Sprintf("Email: %s", strings.Join(s.EmailAddresses, ", ")))
+	}
+	return strings.Join(snips, "\n")
+}
+
 // CSROptions has optional config for creating a CSR request
 type CSROptions struct {
-	DNSNames    []string // DNS SAN names
-	IPAddresses []net.IP // IP SANs
+	SANs SubjectAlternateNames
 }
 
 func generateKey() (*rsa.PrivateKey, []byte, error) {
@@ -83,6 +123,108 @@ func PrivateKeyFromPEMBytes(privatePEMBytes []byte) (KeyType, crypto.Signer, err
 	}
 }
 
+var oidExtensionSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
+
+func parseSANExtension(value []byte) (sans SubjectAlternateNames, err error) {
+	// RFC 5280, 4.2.1.6
+
+	// SubjectAltName ::= GeneralNames
+	//
+	// GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
+	//
+	// GeneralName ::= CHOICE {
+	//      otherName                       [0]     OtherName,
+	//      rfc822Name                      [1]     IA5String,
+	//      dNSName                         [2]     IA5String,
+	//      x400Address                     [3]     ORAddress,
+	//      directoryName                   [4]     Name,
+	//      ediPartyName                    [5]     EDIPartyName,
+	//      uniformResourceIdentifier       [6]     IA5String,
+	//      iPAddress                       [7]     OCTET STRING,
+	//      registeredID                    [8]     OBJECT IDENTIFIER }
+	var seq asn1.RawValue
+	var rest []byte
+	if rest, err = asn1.Unmarshal(value, &seq); err != nil {
+		return
+	} else if len(rest) != 0 {
+		err = fmt.Errorf("x509: trailing data after X.509 extension")
+		return
+	}
+	if !seq.IsCompound || seq.Tag != 16 || seq.Class != 0 {
+		err = asn1.StructuralError{Msg: "bad SAN sequence"}
+		return
+	}
+
+	rest = seq.Bytes
+	for len(rest) > 0 {
+		var v asn1.RawValue
+		rest, err = asn1.Unmarshal(rest, &v)
+		if err != nil {
+			return
+		}
+		switch v.Tag {
+		case 1:
+			sans.EmailAddresses = append(sans.EmailAddresses, string(v.Bytes))
+		case 2:
+			sans.DNSNames = append(sans.DNSNames, string(v.Bytes))
+		case 7:
+			switch len(v.Bytes) {
+			case net.IPv4len, net.IPv6len:
+				sans.IPAddresses = append(sans.IPAddresses, v.Bytes)
+			default:
+				err = errors.New("x509: certificate contained IP address of length " + strconv.Itoa(len(v.Bytes)))
+				return
+			}
+		case 6:
+			u, uerr := url.Parse(string(v.Bytes))
+			if uerr != nil {
+				err = fmt.Errorf("invalid URI '%s', %v", string(v.Bytes), uerr)
+				return
+			}
+			sans.URIs = append(sans.URIs, *u)
+		}
+	}
+	return
+}
+
+func UnmarshalSANs(extensions []pkix.Extension) (sans SubjectAlternateNames, err error) {
+	for _, e := range extensions {
+		if e.Id.Equal(oidExtensionSubjectAltName) {
+			return parseSANExtension(e.Value)
+		}
+	}
+	return
+}
+
+func MarshalSANs(sans SubjectAlternateNames) (pkix.Extension, error) {
+	var rawValues []asn1.RawValue
+	for _, name := range sans.DNSNames {
+		rawValues = append(rawValues, asn1.RawValue{Tag: 2, Class: 2, Bytes: []byte(name)})
+	}
+	for _, email := range sans.EmailAddresses {
+		rawValues = append(rawValues, asn1.RawValue{Tag: 1, Class: 2, Bytes: []byte(email)})
+	}
+	for _, rawIP := range sans.IPAddresses {
+		// If possible, we always want to encode IPv4 addresses in 4 bytes.
+		ip := rawIP.To4()
+		if ip == nil {
+			ip = rawIP
+		}
+		rawValues = append(rawValues, asn1.RawValue{Tag: 7, Class: 2, Bytes: ip})
+	}
+	for _, u := range sans.URIs {
+		rawValues = append(rawValues, asn1.RawValue{Tag: 6, Class: 2, Bytes: []byte(u.String())})
+	}
+	b, err := asn1.Marshal(rawValues)
+	if err != nil {
+		return pkix.Extension{}, err
+	}
+	return pkix.Extension{
+		Id:    oidExtensionSubjectAltName,
+		Value: b,
+	}, nil
+}
+
 // GenerateCSR generates a CSR using the supplied key, common name and options.
 func GenerateCSR(signer crypto.Signer, commonName string, opts CSROptions) (csrPEM []byte, err error) {
 	template := x509.CertificateRequest{
@@ -90,8 +232,13 @@ func GenerateCSR(signer crypto.Signer, commonName string, opts CSROptions) (csrP
 			CommonName: commonName,
 		},
 		SignatureAlgorithm: x509.SHA256WithRSA,
-		DNSNames:           opts.DNSNames,
-		IPAddresses:        opts.IPAddresses,
+	}
+	if !opts.SANs.IsEmpty() {
+		ext, err := MarshalSANs(opts.SANs)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = []pkix.Extension{ext}
 	}
 	var csr []byte
 	csr, err = x509.CreateCertificateRequest(rand.Reader, &template, signer)

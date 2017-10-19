@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/dimfeld/httptreemux"
@@ -40,12 +41,13 @@ type Signer func(subject *identity.PodSubject) (string, error)
 
 // identityContext is the context for the identity document.
 type identityContext struct {
-	Domain          string   // Athenz domain
-	Service         string   // Athenz service name
-	ProviderService string   // provider service name
-	SANNames        []string // SAN names to be registered for the TLS cert
-	SANIPs          []string // SAN IPs to be registered for the TLS cert
-	InstanceID      string   // instance id returned by Athenz after initial call
+	Domain          string    // Athenz domain
+	Service         string    // Athenz service name
+	ProviderService string    // provider service name
+	SANNames        []string  // SAN names to be registered for the TLS cert
+	SANIPs          []string  // SAN IPs to be registered for the TLS cert
+	SANURIs         []url.URL // SAN URIs to be registered for TLS cert
+	InstanceID      string    // instance id returned by Athenz after initial call
 }
 
 func (c *identityContext) assertValid() error {
@@ -137,6 +139,11 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 	if pos := strings.LastIndex(localName, "/"); pos >= 0 {
 		localName = localName[pos+1:]
 	}
+
+	u, err := h.ClusterConfig.SpiffeURI(subject.Domain, subject.Service)
+	if err != nil {
+		return handle(errors.Wrap(err, "SPIFFE URL generation"))
+	}
 	c := identityContext{
 		Domain:          subject.Domain,
 		Service:         subject.Service,
@@ -148,6 +155,7 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 		SANIPs: []string{
 			subject.IP,
 		},
+		SANURIs: []url.URL{*u},
 	}
 	if subject.ServiceIP != "" {
 		c.SANIPs = append(c.SANIPs, subject.ServiceIP)

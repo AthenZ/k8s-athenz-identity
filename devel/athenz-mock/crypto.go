@@ -4,11 +4,14 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
 	"time"
+
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
 func newSerial() (*big.Int, error) {
@@ -53,14 +56,22 @@ func createCert(key crypto.PrivateKey, cert *x509.Certificate, csr *x509.Certifi
 		SignatureAlgorithm:    csr.SignatureAlgorithm,
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
-		DNSNames:              csr.DNSNames,
-		IPAddresses:           csr.IPAddresses,
-		EmailAddresses:        csr.EmailAddresses,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 	}
 
+	sans, err := util.UnmarshalSANs(csr.Extensions)
+	if err != nil {
+		return nil, err
+	}
+	if !sans.IsEmpty() {
+		ext, err := util.MarshalSANs(sans)
+		if err != nil {
+			return nil, err
+		}
+		template.ExtraExtensions = []pkix.Extension{ext}
+	}
 	c, err := x509.CreateCertificate(rand.Reader, template, cert, csr.PublicKey, key)
 	if err != nil {
 		return nil, fmt.Errorf("x509.CreateCertificate: %v", err)

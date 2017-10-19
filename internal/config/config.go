@@ -3,11 +3,11 @@ package config
 
 import (
 	"crypto/x509"
+	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"strings"
-
-	"flag"
 
 	"github.com/ghodss/yaml"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
@@ -59,6 +59,12 @@ func (c *ClusterConfiguration) trustRoot(src TrustedSource) (*x509.CertPool, err
 		return nil, fmt.Errorf("unable to append certificates for root %s", src)
 	}
 	return pool, nil
+}
+
+func (c *ClusterConfiguration) SpiffeURI(domain, service string) (*url.URL, error) {
+	ns := c.DomainToNamespace(domain)
+	cluster := strings.TrimPrefix(c.DNSSuffix, "svc.")
+	return url.Parse(fmt.Sprintf("spiffe://%s/ns/%s/sa/%s", cluster, ns, service))
 }
 
 // ServiceURLHost returns the host part of the service URL for a service.

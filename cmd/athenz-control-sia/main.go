@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -128,6 +129,10 @@ func parseFlags(program string, args []string) (*params, error) {
 	conf, err := cc.ClientTLSConfig(config.AthenzRoot)
 	domain := cc.NamespaceToDomain(namespace)
 
+	spiffeURI, err := cc.SpiffeURI(domain, account)
+	if err != nil {
+		return nil, errors.Wrap(err, "generate SPIFFE URI")
+	}
 	client, err := newClient(ztsConfig{
 		endpoint:   cc.ZTSEndpoint,
 		tls:        conf,
@@ -136,7 +141,10 @@ func parseFlags(program string, args []string) (*params, error) {
 		domain:     domain,
 		service:    account,
 		opts: util.CSROptions{
-			DNSNames: []string{cc.ServiceURLHost(domain, account)},
+			SANs: util.SubjectAlternateNames{
+				DNSNames: []string{cc.ServiceURLHost(domain, account)},
+				URIs:     []url.URL{*spiffeURI},
+			},
 		},
 	})
 	if err != nil {
