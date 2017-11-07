@@ -1,0 +1,5 @@
+FROM ubuntu
+ADD ./_build/bin/athenz-callback /usr/bin/athenz-callback
+ENTRYPOINT ["/usr/bin/athenz-callback"]
+
+

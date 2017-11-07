@@ -1,0 +1,11 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: athenz-callback
+spec:
+  selector:
+    app: athenz-callback
+  ports:
+  - protocol: TCP
+    port: 4443
+    targetPort: 4443

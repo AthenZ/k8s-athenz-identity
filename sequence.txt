@@ -1,0 +1,43 @@
+participant Admin as admin
+participant Kubernetes as k8s
+participant "Initializer" as init
+participant Kubelet as kubelet
+participant Pod as pod
+participant "Identity\nAgent" as agent
+participant "JWT\nservice" as jwt
+participant Athenz as zts
+participant "Provider\ncallback" as cb
+
+
+admin->zts: authorize k8s cluster\nto launch service
+admin->k8s: provision\nServiceAccount
+admin->k8s: launchPod\n(images, ServiceAccount)
+
+init->init: watch for pods
+
+loop for each pod
+  init->init: inject flex volume, \ninit and refresh containers
+  init->k8s: updated PodSpec
+end
+
+k8s->kubelet: create Pod
+kubelet->kubelet: create FlexVolume
+kubelet->pod: create pod
+pod->agent: get identity
+agent->kubelet: get pod info
+kubelet->agent: pod info
+agent->jwt: pod info
+jwt->agent: JWT
+agent->agent: generate keypair,\ncreate CSR
+agent->zts: getIdentity(CSR, JWT)
+zts->cb: confirm\nlaunch(JWT)
+cb->cb: check signature,\nmetadata
+cb->k8s: get pod/ service
+k8s->cb: pod/ service object
+cb->cb:verify attributes
+
+cb-> zts: ok
+zts-> zts: mint cert(s)
+zts->agent: X.509 cert
+agent->pod: X.509 cert + key
+

@@ -1,0 +1,12 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: mock-athenz
+spec:
+  selector:
+    app: mock-athenz
+  ports:
+  - protocol: TCP
+    port: 4443
+    targetPort: 4443
+

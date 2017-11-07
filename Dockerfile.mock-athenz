@@ -1,0 +1,5 @@
+FROM ubuntu
+ADD ./_build/bin/athenz-mock /usr/bin/athenz-mock
+ENTRYPOINT ["/usr/bin/athenz-mock"]
+
+

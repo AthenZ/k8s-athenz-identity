@@ -1,0 +1,76 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: athenz-jwt-service
+  name: athenz-jwt-service
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: athenz-jwt-service
+      name: athenz-jwt-service
+    spec:
+      serviceAccountName: athenz-jwt-service
+      volumes:
+      - { name: sign-private-dir, secret: { secretName: athenz-signing-private } }
+      - { name: service-identity-dir, secret: { secretName: athenz-jwt-service-identity } }
+      - { name: tlscerts, emptyDir: {} }
+      - { name: ntoken, emptyDir: {} }
+      - { name: config-volume, configMap: { name: athenz-config } }
+
+      initContainers:
+      - name: sia-init
+        image: local/k8s-athenz-control-sia:latest
+        imagePullPolicy: Never
+        args:
+        - "--mode=init"
+        - "--identity-dir=/var/tls/athenz/private"
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
+        env:
+        - { name: NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: ACCOUNT, valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
+
+        volumeMounts:
+        - { name: config-volume, mountPath: /var/cluster, readOnly: true}
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: false }
+        - { name: ntoken, mountPath: /tokens, readOnly: false }
+
+      containers:
+      - name: sia-refresh
+        image: local/k8s-athenz-control-sia:latest
+        imagePullPolicy: Never
+        args:
+        - "--mode=refresh"
+        - "--identity-dir=/var/tls/athenz/private"
+        - "--out-ca-cert=/var/tls/athenz/public/ca.cert"
+        - "--out-cert=/var/tls/athenz/public/service.cert"
+        - "--out-ntoken=/tokens/ntoken"
+        env:
+        - { name: NAMESPACE, valueFrom: { fieldRef: { fieldPath: metadata.namespace } } }
+        - { name: ACCOUNT, valueFrom: { fieldRef: { fieldPath: spec.serviceAccountName } } }
+        volumeMounts:
+        - { name: config-volume, mountPath: /var/cluster, readOnly: true}
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: false }
+        - { name: ntoken, mountPath: /tokens, readOnly: false }
+
+      - name: main
+        image: local/k8s-athenz-jwt-service:latest
+        imagePullPolicy: Never
+        args:
+        - "--cert=/var/tls/athenz/public/service.cert"
+        - "--identity-cn=k8s.admin.k8s-node"
+        - "--key=/var/tls/athenz/private/service.key"
+        - "--sign-key-dir=/var/keys/private"
+        volumeMounts:
+        - { name: config-volume, mountPath: /var/cluster, readOnly: true}
+        - { name: sign-private-dir, mountPath: /var/keys/private, readOnly: true }
+        - { name: service-identity-dir, mountPath: /var/tls/athenz/private, readOnly: true }
+        - { name: tlscerts, mountPath: /var/tls/athenz/public, readOnly: true }
+        - { name: ntoken, mountPath: /tokens, readOnly: true }
+

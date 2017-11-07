@@ -1,0 +1,36 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: mock-athenz
+  labels:
+    app: mock-athenz
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mock-athenz
+      name: mock-athenz
+    spec:
+      serviceAccountName: mock-athenz
+      volumes:
+      - { name: root-ca, secret: { secretName: mock-athenz-root-ca } }
+      - { name: tls, secret: { secretName: mock-athenz-tls } }
+      - { name: config-volume, configMap: { name: athenz-config } }
+      - { name: zts-config-volume, configMap: { name: mock-zts-config } }
+
+      containers:
+      - name: main
+        image: local/k8s-mock-athenz:latest
+        imagePullPolicy: Never
+        args:
+        - "--cert=/var/athenz/server/server.cert"
+        - "--key=/var/athenz/server/server.key"
+        - "--listen=:4443"
+        - "--root-ca-cert=/var/athenz/root-ca/cert"
+        - "--root-ca-key=/var/athenz/root-ca/key"
+        volumeMounts:
+        - { name: root-ca,           mountPath: /var/athenz/root-ca,  readOnly: true }
+        - { name: tls,               mountPath: /var/athenz/server,   readOnly: true }
+        - { name: config-volume,     mountPath: /var/cluster,         readOnly: true }
+        - { name: zts-config-volume, mountPath: /var/zts,             readOnly: true }
