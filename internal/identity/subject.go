@@ -15,20 +15,18 @@ import (
 )
 
 const (
-	scheme         = "pod"
-	paramDomain    = "d"
-	paramService   = "n"
-	paramIP        = "i"
-	paramServiceIP = "s"
+	scheme       = "pod"
+	paramDomain  = "d"
+	paramService = "n"
+	paramIP      = "i"
 )
 
 // PodSubject is the set of pod attributes that need to be verified in the flow.
 type PodSubject struct {
-	ID        string
-	Domain    string
-	Service   string
-	IP        string
-	ServiceIP string
+	ID      string
+	Domain  string
+	Service string
+	IP      string
 }
 
 func (s *PodSubject) assertValid() error {
@@ -46,9 +44,6 @@ func (s *PodSubject) toURI() (string, error) {
 		return "", err
 	}
 	suffix := ""
-	if s.ServiceIP != "" {
-		suffix = fmt.Sprintf("&%s=%s", paramServiceIP, esc(s.ServiceIP))
-	}
 	return fmt.Sprintf("%s:%s?%s=%s&%s=%s&%s=%s%s",
 			scheme,
 			s.ID,
@@ -73,7 +68,6 @@ func (s *PodSubject) fromURI(u string) error {
 	s.Domain = q.Get(paramDomain)
 	s.Service = q.Get(paramService)
 	s.IP = q.Get(paramIP)
-	s.ServiceIP = q.Get(paramServiceIP)
 	return s.assertValid()
 }
 
@@ -96,21 +90,15 @@ func verifySubjectURI(u string, provider AttributeProvider) (*PodSubject, error)
 	return attrs, nil
 }
 
-// ServiceIPProvider returns a service IP, if present, for the supplied Athenz domain and
-// service. It should return a blank string when no IP is found.
-type ServiceIPProvider func(domain, service string) (string, error)
-
 // Mapper maps pod attributes to a subject.
 type Mapper struct {
-	provider ServiceIPProvider
-	config   *config.ClusterConfiguration
+	config *config.ClusterConfiguration
 }
 
 // NewMapper returns a mapper that can provide pod attributes for a pod object.
-func NewMapper(c *config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
+func NewMapper(c *config.ClusterConfiguration) *Mapper {
 	return &Mapper{
-		config:   c,
-		provider: p,
+		config: c,
 	}
 }
 
@@ -118,15 +106,10 @@ func NewMapper(c *config.ClusterConfiguration, p ServiceIPProvider) *Mapper {
 func (m *Mapper) GetSubject(pod *v1.Pod) (*PodSubject, error) {
 	domain := m.config.NamespaceToDomain(pod.Namespace)
 	service := pod.Spec.ServiceAccountName
-	sip, err := m.provider(domain, service)
-	if err != nil {
-		return nil, errors.Wrap(err, "service ip provider")
-	}
 	return &PodSubject{
-		ID:        fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
-		Domain:    domain,
-		Service:   pod.Spec.ServiceAccountName,
-		IP:        pod.Status.PodIP,
-		ServiceIP: sip,
+		ID:      fmt.Sprintf("%s/%s", pod.Namespace, pod.Name),
+		Domain:  domain,
+		Service: service,
+		IP:      pod.Status.PodIP,
 	}, nil
 }
