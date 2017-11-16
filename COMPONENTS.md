@@ -93,17 +93,16 @@ Processing:
 Init:
 * Turn the input pod id into a filesystem path and load pod metadata created by the volume driver
 * Get pod attributes from kubelet endpoint
-* Lookup DNS to find the service IP if one exists
 * Create a JWT using the signing service
 * Generate a private key and associated CSR
 * Contact ZTS with the JWT and CSR and get cert/ token
 * Write additional state for refresh to the volume filesystem
-* Return this information to the caller
+* Return credentials to the caller
 
 Refresh:
 * Turn the input pod id into a filesystem path and load refresh state from the volume filesystem
-* Contact ZTS for refresh using the previous key and cert supplied by the caller in the client TLS config
-* Return refreshed information to the caller
+* Contact ZTS for refresh using the previous key and cert supplied by the caller
+* Return refreshed credentials to the caller
 
 ### athenz-initializer
 
@@ -138,7 +137,7 @@ Outputs:
 Processing:
 * Only allow requests from Athenz using mutual TLS
 * Verify JWT using public keys
-* Verify pod subject using k8s API to get the pod and service (optional)
+* Verify pod subject using k8s API to get the pod object
 * Verify DNS, IP and URI SAN names requested
 * Grant access
 
@@ -147,7 +146,7 @@ Processing:
 **Description**: The service identity agent for data plane workloads.
 
 Config:
-* Path to file containing hashed-id of volume
+* Path to opaque pod identity
 * Socket endpoint for agent socket
 
 Inputs:

@@ -4,12 +4,10 @@ participant "Initializer" as init
 participant Kubelet as kubelet
 participant Pod as pod
 participant "Identity\nAgent" as agent
-participant "JWT\nservice" as jwt
 participant Athenz as zts
 participant "Provider\ncallback" as cb
 
-
-admin->zts: authorize k8s cluster\nto launch service
+admin->zts: authorize k8s cluster to launch service
 admin->k8s: provision\nServiceAccount
 admin->k8s: launchPod\n(images, ServiceAccount)
 
@@ -26,9 +24,7 @@ kubelet->pod: create pod
 pod->agent: get identity
 agent->kubelet: get pod info
 kubelet->agent: pod info
-agent->jwt: pod info
-jwt->agent: JWT
-agent->agent: generate keypair,\ncreate CSR
+agent->agent: generate keypair, JWT, CSR
 agent->zts: getIdentity(CSR, JWT)
 zts->cb: confirm\nlaunch(JWT)
 cb->cb: check signature,\nmetadata
