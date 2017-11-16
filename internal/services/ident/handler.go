@@ -64,20 +64,18 @@ func (c *identityContext) assertValid() error {
 
 // HandlerConfig is the configuration for the identity handler.
 type HandlerConfig struct {
-	Signer          Signer                       // used to sign JWTs
-	AttrProvider    identity.AttributeProvider   // used to extract a pod subject from attributes
-	ZTSEndpoint     string                       // Athenz endpoint
-	ClusterConfig   *config.ClusterConfiguration // cluster config
-	ProviderService string                       // the name of the provider callback service.
+	Signer        Signer                       // used to sign JWTs
+	AttrProvider  identity.AttributeProvider   // used to extract a pod subject from attributes
+	ZTSEndpoint   string                       // Athenz endpoint
+	ClusterConfig *config.ClusterConfiguration // cluster config
 }
 
 func (h *HandlerConfig) assertValid() error {
 	return util.CheckFields("HandlerConfig", map[string]bool{
-		"Signer":          h.Signer == nil,
-		"AttrProvider":    h.AttrProvider == nil,
-		"ZTSEndpoint":     h.ZTSEndpoint == "",
-		"ProviderService": h.ProviderService == "",
-		"ClusterConfig":   h.ClusterConfig == nil,
+		"Signer":        h.Signer == nil,
+		"AttrProvider":  h.AttrProvider == nil,
+		"ZTSEndpoint":   h.ZTSEndpoint == "",
+		"ClusterConfig": h.ClusterConfig == nil,
 	})
 }
 
@@ -150,7 +148,7 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 	c := identityContext{
 		Domain:          subject.Domain,
 		Service:         subject.Service,
-		ProviderService: h.ProviderService,
+		ProviderService: h.ClusterConfig.ProviderService,
 		SANNames: []string{
 			fmt.Sprintf("%s.%s.%s", subject.Service, dashedDomain, h.ClusterConfig.DNSSuffix),
 			fmt.Sprintf("%s.instanceid.athenz.%s", localName, h.ClusterConfig.DNSSuffix),
@@ -159,9 +157,6 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 			subject.IP,
 		},
 		SANURIs: []url.URL{*u},
-	}
-	if subject.ServiceIP != "" {
-		c.SANIPs = append(c.SANIPs, subject.ServiceIP)
 	}
 	z, err := newZTS(h.ZTSEndpoint, h.ClusterConfig, c)
 	if err != nil {

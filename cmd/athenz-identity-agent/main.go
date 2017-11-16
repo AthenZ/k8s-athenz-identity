@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"net"
-
 	"github.com/pkg/errors"
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
@@ -140,32 +138,17 @@ func parseFlags(program string, args []string) (*params, error) {
 			TLSClientConfig: cfg,
 		},
 	})
-	serviceIPProvider := func(domain, service string) (x string, _ error) {
-		defer func() {
-			log.Println("SIP for ", domain, "/", service, "=", x, err)
-		}()
-		host := cc.ServiceURLHost(domain, service)
-		if ips, err := net.LookupIP(host); err == nil {
-			for _, ip := range ips {
-				if ip.To4() != nil {
-					return ip.String(), nil
-				}
-			}
-		}
-		return "", nil
-	}
 	l := &lookup{
 		podEndpoint: os.ExpandEnv(podEndpoint),
 		timeout:     pt,
-		mapper:      identity.NewMapper(cc, serviceIPProvider),
+		mapper:      identity.NewMapper(cc),
 	}
 
 	handler, err := ident.NewHandler(apiVersion, ident.HandlerConfig{
-		Signer:          client.GetJWT,
-		AttrProvider:    l.getPodAttributes,
-		ZTSEndpoint:     cc.ZTSEndpoint,
-		ClusterConfig:   cc,
-		ProviderService: cc.ProviderService,
+		Signer:        client.GetJWT,
+		AttrProvider:  l.getPodAttributes,
+		ZTSEndpoint:   cc.ZTSEndpoint,
+		ClusterConfig: cc,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "ident.NewHandler")
