@@ -4,6 +4,8 @@ k8s-athenz-identity
 Proof of concept control plane components to securely provide [Athenz](https://github.com/yahoo/athenz) identities to 
 [Kubernetes](https://kubernetes.io/) application workloads. 
 
+[This gist](https://gist.github.com/gotwarlost/f46bd4abd59c1bbebcd0b8c3a9851d5b) provides a high-level overview.
+
 See the [design document](DESIGN.md) for a detailed description of the end to end flow. 
 Read the [components doc](COMPONENTS.md) for details on every component.
 
