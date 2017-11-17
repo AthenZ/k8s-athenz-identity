@@ -35,7 +35,7 @@ type Identity struct {
 
 // RefreshRequest is the input for identity refresh.
 type RefreshRequest struct {
-	KeyPEM  []byte `json:"KeyPEM"`  // the prior key
+	KeyPEM  []byte `json:"keyPEM"`  // the prior key
 	CertPEM []byte `json:"certPEM"` // the prior cert
 }
 
