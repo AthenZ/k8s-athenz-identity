@@ -1,0 +1,20 @@
+title "Pod launch"
+participant Admin as admin
+participant Athenz as zts
+participant Kubernetes as k8s
+participant "Initializer" as init
+participant Kubelet as kubelet
+
+admin->zts: authorize k8s cluster\nto launch service
+admin->k8s: provision\nServiceAccount
+admin->k8s: launchPod\n(images, ServiceAccount)
+
+init->init: watch for pods
+
+loop for each pod
+  init->init: inject flex volume, \ninit and refresh containers
+  init->k8s: updated PodSpec
+end
+
+k8s->kubelet: create Pod
+
