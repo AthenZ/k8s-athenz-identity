@@ -18,8 +18,8 @@ agent->agent: generate keypair, JWT, CSR
 agent->zts: getIdentity(CSR, JWT)
 zts->cb: confirm\nlaunch(JWT)
 cb->cb: check signature,\nmetadata
-cb->k8s: get pod/ service
-k8s->cb: pod/ service object
+cb->k8s: get pod
+k8s->cb: pod object
 cb->cb:verify attributes
 
 cb-> zts: ok

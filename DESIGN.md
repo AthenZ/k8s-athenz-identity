@@ -24,8 +24,8 @@ Please read the [Athenz overview doc](ATHENZ.md) first.
 
 ### Launch flow
 
-![sequence diagram](sequence.png)
-
+![pod launch](pod-launch-seq.png)
+![pod startup](pod-startup-seq.png)
 
 ### Identity document
 
