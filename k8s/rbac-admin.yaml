@@ -38,10 +38,6 @@ subjects:
   namespace: k8s-admin
   apiGroup: rbac.authorization.k8s.io
 - kind: User
-  name: system:serviceaccount:k8s-admin:athenz-jwt-service
-  namespace: k8s-admin
-  apiGroup: rbac.authorization.k8s.io
-- kind: User
   name: system:serviceaccount:k8s-admin:athenz-identity-agent
   namespace: k8s-admin
   apiGroup: rbac.authorization.k8s.io
@@ -58,10 +54,6 @@ roleRef:
 subjects:
 - kind: User
   name: system:serviceaccount:k8s-admin:athenz-identityd
-  namespace: k8s-admin
-  apiGroup: rbac.authorization.k8s.io
-- kind: User
-  name: system:serviceaccount:k8s-admin:athenz-jwt-service
   namespace: k8s-admin
   apiGroup: rbac.authorization.k8s.io
 - kind: User

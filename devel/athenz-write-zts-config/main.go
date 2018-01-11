@@ -22,9 +22,6 @@ func main() {
 		cbService        = "k8s.admin.athenz-identityd"
 		cbPublicKey      = "athenz-identityd.pub.pem"
 		cbKeyVersion     = "v1"
-		jwtService       = "k8s.admin.athenz-jwt-service"
-		jwtKeyVersion    = "v1"
-		jwtPublicKey     = "jwt-service.pub.pem"
 	)
 
 	flag.StringVar(&providerService, "provider-service", providerService, "provider service name in Athenz format")
@@ -34,17 +31,9 @@ func main() {
 	flag.StringVar(&cbPublicKey, "identityd-public-key", cbPublicKey, "identityd public key file")
 	flag.StringVar(&cbKeyVersion, "identityd-version", cbKeyVersion, "identityd key version")
 
-	flag.StringVar(&jwtService, "jwt-service", jwtService, "JWT service name")
-	flag.StringVar(&jwtPublicKey, "jwt-public-key", jwtPublicKey, "JWT public key file")
-	flag.StringVar(&jwtKeyVersion, "jwt-version", jwtKeyVersion, "JWT key version")
-
 	flag.Parse()
 
 	cbb, err := ioutil.ReadFile(cbPublicKey)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	jwtb, err := ioutil.ReadFile(jwtPublicKey)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -58,11 +47,6 @@ func main() {
 				Service: cbService,
 				Version: cbKeyVersion,
 				PEM:     string(cbb),
-			},
-			{
-				Service: jwtService,
-				Version: jwtKeyVersion,
-				PEM:     string(jwtb),
 			},
 		},
 	}

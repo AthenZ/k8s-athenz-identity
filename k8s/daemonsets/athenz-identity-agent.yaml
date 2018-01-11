@@ -20,6 +20,7 @@ spec:
       - { name: volume-source, hostPath: { path: /var/athenz/volumes } }
       - { name: driver-dir, hostPath: { path: /usr/libexec/kubernetes/kubelet-plugins/volume/exec/athenz.kubernetes.io~athenz-volume-driver, type: Directory } }
       - { name: agent-dir, hostPath: { path: /var/athenz/agent, type: Directory } }
+      - { name: sign-private-dir, secret: { secretName: athenz-signing-private } }
       containers:
       - name: main
         image: local/k8s-athenz-identity-agent:latest
@@ -29,16 +30,17 @@ spec:
         - "--cert=/var/athenz/node/identity/service.cert"
         - "--driver-source=/usr/bin/athenz-volume-driver"
         - "--driver-target=/driver-mount/athenz-volume-driver"
-        - "--jwt-endpoint=https://athenz-jwt-service.k8s-admin.svc.cluster.local:4443/v1"
         - "--key=/var/athenz/node/identity/service.key"
         - "--listen=unix:///var/athenz/agent/agent.sock"
         - "--pod-endpoint=http://${NODE_NAME}:10255"
+        - "--sign-key-dir=/var/keys/private"
         volumeMounts:
-        - { name: config-volume,  mountPath: /var/cluster, readOnly: true}
-        - { name: driver-dir,     mountPath: /driver-mount }
-        - { name: agent-dir,      mountPath: /var/athenz/agent }
-        - { name: volume-source,  mountPath: /var/athenz/volumes  }
-        - { name: identity-dir,   mountPath: /var/athenz/node/identity, readOnly: true }
+        - { name: config-volume,    mountPath: /var/cluster, readOnly: true}
+        - { name: driver-dir,       mountPath: /driver-mount }
+        - { name: agent-dir,        mountPath: /var/athenz/agent }
+        - { name: volume-source,    mountPath: /var/athenz/volumes  }
+        - { name: identity-dir,     mountPath: /var/athenz/node/identity, readOnly: true }
+        - { name: sign-private-dir, mountPath: /var/keys/private, readOnly: true }
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:

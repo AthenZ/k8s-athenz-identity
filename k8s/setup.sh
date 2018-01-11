@@ -114,14 +114,6 @@ then
     kubectl --namespace=${NS} create secret generic athenz-signing-private --from-literal="athenz-init-secret.v1=`cat signing.pem`"
 fi
 
-section "Create JWT keys"
-if [[ ! -f jwt-service.pem ]]
-then
-    openssl genrsa -out jwt-service.pem 2048
-    openssl rsa -in jwt-service.pem -outform PEM -pubout -out jwt-service.pub.pem
-    kubectl --namespace=${NS} create secret generic athenz-jwt-service-identity --from-literal="service.key=`cat jwt-service.pem`" --from-literal="service.version=v1"
-fi
-
 section "Create identityd keys"
 if [[ ! -f athenz-identityd.pem ]]
 then
@@ -152,11 +144,6 @@ then
         --out-ntoken=node-keys/token --out-cert=node-keys/service.cert --out-ca-cert=node-keys/ca.cert
     sudo cp node-keys/service.key node-keys/service.cert node-keys/ca.cert /var/athenz/node/identity/
 fi
-
-section "Setup JWT service"
-
-kubectl --namespace=${NS} apply -f services/athenz-jwt-service.yaml
-kubectl --namespace=${NS} apply -f deployments/athenz-jwt-service.yaml
 
 section "Setup identity agent"
 kubectl --namespace=${NS} apply -f daemonsets/athenz-identity-agent.yaml
