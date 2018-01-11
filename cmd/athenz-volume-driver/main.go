@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"github.com/yahoo/k8s-athenz-identity/internal/volume"
 )
 
 const hostSocketDir = "/var/athenz/agent" // the directory that has the agent socket
@@ -96,7 +96,7 @@ func doMount(args []string) (interface{}, error) {
 		return nil, err
 	}
 
-	vfs := ident.NewIdentityVolume(path)
+	vfs := volume.New(path)
 	// unmount and destroy volume first if somehow present
 	doUnmount([]string{path}) // and ignore errors
 
@@ -120,7 +120,7 @@ func doUnmount(args []string) (interface{}, error) {
 		return nil, fmt.Errorf("insuffient args, want at least %d got %d", 1, len(args))
 	}
 	path := args[0]
-	vfs := ident.NewIdentityVolume(path)
+	vfs := volume.New(path)
 	err := bindUnmount(vfs.SocketPath())
 	if err != nil {
 		return nil, errors.Wrap(err, "unmount socket path")

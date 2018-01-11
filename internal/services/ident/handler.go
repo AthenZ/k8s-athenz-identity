@@ -18,6 +18,7 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
+	"github.com/yahoo/k8s-athenz-identity/internal/volume"
 )
 
 const (
@@ -105,9 +106,9 @@ func (h *handler) doJSON(w http.ResponseWriter, data interface{}) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func (h *handler) getSubject(handle string) (*identity.PodSubject, *IdentityVolume, error) {
-	v := newVolumeFromHashedPath(handle)
-	podID, err := v.getID()
+func (h *handler) getSubject(handle string) (*identity.PodSubject, *volume.IdentityVolume, error) {
+	v := volume.NewFromHashedPath(handle)
+	podID, err := v.PodIdentifier()
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "volume.getID")
 	}
@@ -183,7 +184,7 @@ func (h *handler) initIdentity(w http.ResponseWriter, r *http.Request, handle st
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := vol.saveContext(context); err != nil {
+	if err := vol.SaveContext(context); err != nil {
 		err := errors.Wrap(err, "saveContext")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -195,9 +196,9 @@ func (h *handler) getRefreshParams(idHandle string, r *http.Request) (*RefreshRe
 	handle := func(err error) (*RefreshRequest, *identityContext, error) {
 		return nil, nil, err
 	}
-	v := newVolumeFromHashedPath(idHandle)
+	v := volume.NewFromHashedPath(idHandle)
 	var c identityContext
-	if err := v.getContext(&c); err != nil {
+	if err := v.LoadContext(&c); err != nil {
 		return handle(errors.Wrap(err, "vol.getContext"))
 	}
 	var res RefreshRequest

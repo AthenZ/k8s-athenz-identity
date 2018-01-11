@@ -1,7 +1,7 @@
 // Copyright 2017, Yahoo Holdings Inc.
 // Licensed under the terms of the BSD-3-Clause license. See LICENSE file for terms.
 
-package ident
+package volume
 
 import (
 	"crypto/sha256"
@@ -22,16 +22,16 @@ var (
 	hostVolumeSource = "/var/athenz/volumes" // the root directory under which we create flex volumes
 )
 
-// podIdentifier identifies a pod for a volume.
-type podIdentifier struct {
+// PodIdentifier identifies a pod for a volume.
+type PodIdentifier struct {
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 }
 
-func (p *podIdentifier) String() string {
+func (p *PodIdentifier) String() string {
 	return fmt.Sprintf("%s/%s", p.Namespace, p.Name)
 }
-func (p *podIdentifier) AssertValid() error {
+func (p *PodIdentifier) assertValid() error {
 	return util.CheckFields("volume pod identifier", map[string]bool{
 		"Namespace": p.Namespace == "",
 		"Name":      p.Name == "",
@@ -55,16 +55,17 @@ type IdentityVolume struct {
 	root string
 }
 
-// NewIdentityVolume returns an identity FS for the supplied mount path.
-func NewIdentityVolume(mountPath string) *IdentityVolume {
+// New returns an identity FS for the supplied mount path.
+func New(mountPath string) *IdentityVolume {
 	hash := sha256.New()
 	hash.Write([]byte(mountPath))
 	h := hash.Sum(nil)
 	root := base64.RawURLEncoding.EncodeToString(h)
-	return newVolumeFromHashedPath(root)
+	return NewFromHashedPath(root)
 }
 
-func newVolumeFromHashedPath(handle string) *IdentityVolume {
+// NewFromHashedPath returns an identity FS for the hashed mount path.
+func NewFromHashedPath(handle string) *IdentityVolume {
 	return &IdentityVolume{
 		root: handle,
 	}
@@ -91,8 +92,8 @@ func (v *IdentityVolume) SocketPath() string {
 
 // Create creates the artifacts for the supplied pod namespace and name.
 func (v *IdentityVolume) Create(namespace, name string) error {
-	id := podIdentifier{Namespace: namespace, Name: name}
-	if err := id.AssertValid(); err != nil {
+	id := PodIdentifier{Namespace: namespace, Name: name}
+	if err := id.assertValid(); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(v.SocketPath(), 0750); err != nil {
@@ -133,23 +134,28 @@ func (v *IdentityVolume) read(what string, file string, data interface{}) error 
 	return nil
 }
 
-func (v *IdentityVolume) getID() (*podIdentifier, error) {
-	var id podIdentifier
+// PodIdentifier returns the pod identifier for this volume.
+func (v *IdentityVolume) PodIdentifier() (*PodIdentifier, error) {
+	var id PodIdentifier
 	err := v.read("data", v.dataFile(), &id)
 	if err != nil {
 		return nil, err
 	}
-	if err := id.AssertValid(); err != nil {
+	if err := id.assertValid(); err != nil {
 		return nil, err
 	}
 	return &id, nil
 }
 
-func (v *IdentityVolume) saveContext(ctx interface{}) error {
+// SaveContext saves additional information to the volume in a place
+// that is not mounted into the pod. The supplied object must be JSON
+// seralizable.
+func (v *IdentityVolume) SaveContext(ctx interface{}) error {
 	return v.write("context", v.contextFile(), ctx)
 }
 
-func (v *IdentityVolume) getContext(data interface{}) error {
+// LoadContext returns a previously saved context.
+func (v *IdentityVolume) LoadContext(data interface{}) error {
 	return v.read("context", v.contextFile(), data)
 }
 
