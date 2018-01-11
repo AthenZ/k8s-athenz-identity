@@ -142,10 +142,11 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 		localName = localName[pos+1:]
 	}
 
-	u, err := h.ClusterConfig.SpiffeURI(subject.Domain, subject.Service)
-	if err != nil {
-		return handle(errors.Wrap(err, "SPIFFE URL generation"))
-	}
+	//u, err := h.ClusterConfig.SpiffeURI(subject.Domain, subject.Service)
+	//if err != nil {
+	//	return handle(errors.Wrap(err, "SPIFFE URL generation"))
+	//}
+
 	c := identityContext{
 		Domain:          subject.Domain,
 		Service:         subject.Service,
@@ -157,7 +158,7 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 		SANIPs: []string{
 			subject.IP,
 		},
-		SANURIs: []url.URL{*u},
+		SANURIs: []url.URL{},
 	}
 	z, err := newZTS(h.ZTSEndpoint, h.ClusterConfig, c)
 	if err != nil {
