@@ -22,7 +22,7 @@ func main() {
 		athenzRootFile  = "athenz-ca.pub.pem"
 		serviceRootFile = "athenz-root-ca.pub.pem"
 		ztsEndpoint     = "https://mock-athenz.k8s-admin.svc.cluster.local:4443/zts/v1"
-		providerService = "k8s.admin.athenz-callback"
+		providerService = "k8s.admin.athenz-identityd"
 		authHeader      = "Athenz-Principal-Auth"
 		wrap            = false
 	)

@@ -1,10 +1,10 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: athenz-callback
+  name: athenz-identityd
 spec:
   selector:
-    app: athenz-callback
+    app: athenz-identityd
   ports:
   - protocol: TCP
     port: 4443

@@ -122,12 +122,12 @@ then
     kubectl --namespace=${NS} create secret generic athenz-jwt-service-identity --from-literal="service.key=`cat jwt-service.pem`" --from-literal="service.version=v1"
 fi
 
-section "Create callback keys"
-if [[ ! -f athenz-callback.pem ]]
+section "Create identityd keys"
+if [[ ! -f athenz-identityd.pem ]]
 then
-    openssl genrsa -out athenz-callback.pem 2048
-    openssl rsa -in athenz-callback.pem -outform PEM -pubout -out athenz-callback.pub.pem
-    kubectl --namespace=${NS} create secret generic athenz-callback-identity --from-literal="service.key=`cat athenz-callback.pem`" --from-literal="service.version=v1"
+    openssl genrsa -out athenz-identityd.pem 2048
+    openssl rsa -in athenz-identityd.pem -outform PEM -pubout -out athenz-identityd.pub.pem
+    kubectl --namespace=${NS} create secret generic athenz-identityd-identity --from-literal="service.key=`cat athenz-identityd.pem`" --from-literal="service.version=v1"
 fi
 
 
@@ -161,10 +161,10 @@ kubectl --namespace=${NS} apply -f deployments/athenz-jwt-service.yaml
 section "Setup identity agent"
 kubectl --namespace=${NS} apply -f daemonsets/athenz-identity-agent.yaml
 
-section "Setup athenz callback"
+section "Setup identityd"
 
-kubectl --namespace=${NS} apply -f services/athenz-callback.yaml
-kubectl --namespace=${NS} apply -f deployments/athenz-callback.yaml
+kubectl --namespace=${NS} apply -f services/athenz-identityd.yaml
+kubectl --namespace=${NS} apply -f deployments/athenz-identityd.yaml
 
 
 section Setup initializer

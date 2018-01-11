@@ -17,20 +17,20 @@ subjects:
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRole
-metadata: { name: athenz-callback }
+metadata: { name: athenz-identityd }
 rules: [ { apiGroups: [""], resources: ["pods", "services"], verbs: [ "get" ] } ]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
-  name: athenz-callback
+  name: athenz-identityd
 subjects:
 - kind: User
-  name: system:serviceaccount:k8s-admin:athenz-callback
+  name: system:serviceaccount:k8s-admin:athenz-identityd
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
-  name: athenz-callback
+  name: athenz-identityd
   apiGroup: rbac.authorization.k8s.io
 

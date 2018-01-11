@@ -5,7 +5,7 @@
 ---
 { apiVersion: v1, kind: ServiceAccount, metadata: { name: athenz-initializer } }
 ---
-{ apiVersion: v1, kind: ServiceAccount, metadata: { name: athenz-callback } }
+{ apiVersion: v1, kind: ServiceAccount, metadata: { name: athenz-identityd } }
 ---
 { apiVersion: v1, kind: ServiceAccount, metadata: { name: mock-athenz } }
 
@@ -34,7 +34,7 @@ subjects:
   name: system:serviceaccount:k8s-admin:athenz-initializer
   apiGroup: rbac.authorization.k8s.io
 - kind: User
-  name: system:serviceaccount:k8s-admin:athenz-callback
+  name: system:serviceaccount:k8s-admin:athenz-identityd
   namespace: k8s-admin
   apiGroup: rbac.authorization.k8s.io
 - kind: User
@@ -57,7 +57,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 subjects:
 - kind: User
-  name: system:serviceaccount:k8s-admin:athenz-callback
+  name: system:serviceaccount:k8s-admin:athenz-identityd
   namespace: k8s-admin
   apiGroup: rbac.authorization.k8s.io
 - kind: User

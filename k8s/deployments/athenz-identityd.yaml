@@ -2,21 +2,21 @@ apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   labels:
-    app: athenz-callback
-  name: athenz-callback
+    app: athenz-identityd
+  name: athenz-identityd
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: athenz-callback
-      name: athenz-callback
+        app: athenz-identityd
+      name: athenz-identityd
     spec:
-      serviceAccountName: athenz-callback
+      serviceAccountName: athenz-identityd
       volumes:
       - { name: config-volume, configMap: { name: athenz-config } }
       - { name: sign-public-dir, secret: { secretName: athenz-signing-public } }
-      - { name: service-identity-dir, secret: { secretName: athenz-callback-identity } }
+      - { name: service-identity-dir, secret: { secretName: athenz-identityd-identity } }
       - { name: tlscerts, emptyDir: {} }
       - { name: ntoken, emptyDir: {} }
 
@@ -59,7 +59,7 @@ spec:
         - { name: ntoken, mountPath: /tokens, readOnly: false }
 
       - name: main
-        image: local/k8s-athenz-callback:latest
+        image: local/k8s-athenz-identityd:latest
         imagePullPolicy: Never
         args:
         - "--cert=/var/tls/athenz/public/service.cert"

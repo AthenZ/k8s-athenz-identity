@@ -5,7 +5,7 @@ Components
 * [JWT service](#athenz-jwt-service)
 * [Identity agent](#athenz-identity-agent)
 * [Athenz initializer](#athenz-initializer)
-* [Athenz callback](#athenz-callback)
+* [Athenz identity callback](#athenz-identityd)
 * [Athenz data plane SIA](#athenz-sia)
 * [Athenz control plane SIA](#athenz-control-sia)
 
@@ -119,9 +119,9 @@ Processing:
 * Watch for uninitialized pods using the watch API
 * Inject flex volume and containers, mark pod as initialized
 
-### athenz-callback
+### athenz-identityd
 
-**Description**: The provider callback that verifies information about the pod that needs an identity. Run as a service
+**Description**: The identity provider that verifies information about the pod that needs an identity. Run as a service
 on the cluster using a TLS identity minted by the control-plane SIA.
 
 Config:

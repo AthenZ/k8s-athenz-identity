@@ -17,10 +17,10 @@ import (
 
 func main() {
 	var (
-		providerService  = "k8s.admin.athenz-callback"
-		providerEndpoint = "https://athenz-callback.k8s-admin.svc.cluster.local:4443"
-		cbService        = "k8s.admin.athenz-callback"
-		cbPublicKey      = "athenz-callback.pub.pem"
+		providerService  = "k8s.admin.athenz-identityd"
+		providerEndpoint = "https://athenz-identityd.k8s-admin.svc.cluster.local:4443"
+		cbService        = "k8s.admin.athenz-identityd"
+		cbPublicKey      = "athenz-identityd.pub.pem"
 		cbKeyVersion     = "v1"
 		jwtService       = "k8s.admin.athenz-jwt-service"
 		jwtKeyVersion    = "v1"
@@ -30,9 +30,9 @@ func main() {
 	flag.StringVar(&providerService, "provider-service", providerService, "provider service name in Athenz format")
 	flag.StringVar(&providerEndpoint, "provider-endpoint", providerEndpoint, "provider endpoint")
 
-	flag.StringVar(&cbService, "cb-service", cbService, "callback service name")
-	flag.StringVar(&cbPublicKey, "cb-public-key", cbPublicKey, "callback public key file")
-	flag.StringVar(&cbKeyVersion, "cb-version", cbKeyVersion, "callback key version")
+	flag.StringVar(&cbService, "identityd-service", cbService, "identityd service name")
+	flag.StringVar(&cbPublicKey, "identityd-public-key", cbPublicKey, "identityd public key file")
+	flag.StringVar(&cbKeyVersion, "identityd-version", cbKeyVersion, "identityd key version")
 
 	flag.StringVar(&jwtService, "jwt-service", jwtService, "JWT service name")
 	flag.StringVar(&jwtPublicKey, "jwt-public-key", jwtPublicKey, "JWT public key file")
