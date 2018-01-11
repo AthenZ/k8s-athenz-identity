@@ -82,6 +82,7 @@ func (h *HandlerConfig) assertValid() error {
 
 type handler struct {
 	HandlerConfig
+	locker *idLock
 }
 
 // NewHandler returns the identity agent handler for the supplied leading path and configuration.
@@ -89,7 +90,7 @@ func NewHandler(versionPrefix string, config HandlerConfig) (http.Handler, error
 	if err := config.assertValid(); err != nil {
 		return nil, err
 	}
-	h := &handler{HandlerConfig: config}
+	h := &handler{HandlerConfig: config, locker: newIDLock()}
 	mux := httptreemux.New()
 	mux.POST(versionPrefix+initPath+"/:hashed", func(w http.ResponseWriter, r *http.Request, params map[string]string) {
 		h.initIdentity(w, r, params["hashed"])
@@ -174,12 +175,21 @@ func (h *handler) makeIdentity(subject *identity.PodSubject) (*Identity, *identi
 }
 
 func (h *handler) initIdentity(w http.ResponseWriter, r *http.Request, handle string) {
-	// TODO: handle replay for the same pod
+	unlockFn := h.locker.lockHandle(handle)
+	defer unlockFn()
+
 	subject, vol, err := h.getSubject(handle)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	err = vol.LoadContext(&identityContext{})
+	if err != volume.ErrNoContextFound {
+		http.Error(w, "unable to init identity", http.StatusForbidden)
+		return
+	}
+
 	res, context, err := h.makeIdentity(subject)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

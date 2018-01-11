@@ -22,6 +22,10 @@ var (
 	hostVolumeSource = "/var/athenz/volumes" // the root directory under which we create flex volumes
 )
 
+var (
+	ErrNoContextFound = fmt.Errorf("no context found") // error that indicates that a prior context was not written
+)
+
 // PodIdentifier identifies a pod for a volume.
 type PodIdentifier struct {
 	Namespace string `json:"namespace"`
@@ -126,6 +130,9 @@ func (v *IdentityVolume) write(what string, file string, data interface{}) error
 func (v *IdentityVolume) read(what string, file string, data interface{}) error {
 	b, err := ioutil.ReadFile(file)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrNoContextFound
+		}
 		return errors.Wrap(err, fmt.Sprintf("read %s file", what))
 	}
 	if err := json.Unmarshal(b, data); err != nil {
