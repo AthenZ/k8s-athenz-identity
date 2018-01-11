@@ -139,7 +139,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		addr:          addr,
 		keyFile:       keyFile,
 		certFile:      certFile,
-		handler:       util.NewAccessLogHandler(z.handler(ztsPath)),
+		handler:       util.NewAccessLogHandler(z.handler(ztsPath), nil),
 		shutdownGrace: sg,
 		closers:       []io.Closer{closer},
 	}, nil

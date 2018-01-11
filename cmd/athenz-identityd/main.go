@@ -154,7 +154,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		addr: addr,
 		handler: util.NewAccessLogHandler(&handler{
 			verifier: verifier,
-		}),
+		}, nil),
 		tls:           conf,
 		shutdownGrace: sg,
 		closers:       []io.Closer{closer, watcher},

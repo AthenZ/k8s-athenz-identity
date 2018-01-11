@@ -5,6 +5,7 @@ package util
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -52,7 +53,7 @@ func (s SubjectAlternateNames) String() string {
 		for _, ip := range s.IPAddresses {
 			list = append(list, ip.String())
 		}
-		snips = append(snips, fmt.Sprintf("DNS: %s", strings.Join(list, ", ")))
+		snips = append(snips, fmt.Sprintf("IP: %s", strings.Join(list, ", ")))
 	}
 	if len(s.URIs) > 0 {
 		var list []string
@@ -89,7 +90,7 @@ func generateKey() (*rsa.PrivateKey, []byte, error) {
 func PublicKeyFromPEMBytes(pemBytes []byte) (crypto.PublicKey, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
-		return nil, fmt.Errorf("PublicKeyFromPEMBytes: no PEM block found")
+		return nil, fmt.Errorf("PublicKeyFromPEMBytes: no valid PEM block found")
 	}
 	key, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
@@ -109,7 +110,7 @@ func PrivateKeyFromPEMBytes(privatePEMBytes []byte) (KeyType, crypto.Signer, err
 		return handle(fmt.Errorf("unable to load private key, invalid PEM block: %s", privatePEMBytes))
 	}
 	switch block.Type {
-	case "EC PRIVATE KEY":
+	case "ECDSA PRIVATE KEY":
 		k, err := x509.ParseECPrivateKey(block.Bytes)
 		if err != nil {
 			return handle(err)
@@ -230,11 +231,15 @@ func MarshalSANs(sans SubjectAlternateNames) (pkix.Extension, error) {
 
 // GenerateCSR generates a CSR using the supplied key, common name and options.
 func GenerateCSR(signer crypto.Signer, commonName string, opts CSROptions) (csrPEM []byte, err error) {
+	algo := x509.SHA256WithRSA
+	if _, ok := signer.(*ecdsa.PrivateKey); ok {
+		algo = x509.ECDSAWithSHA256
+	}
 	template := x509.CertificateRequest{
 		Subject: pkix.Name{
 			CommonName: commonName,
 		},
-		SignatureAlgorithm: x509.SHA256WithRSA,
+		SignatureAlgorithm: algo,
 	}
 	if !opts.SANs.IsEmpty() {
 		ext, err := MarshalSANs(opts.SANs)

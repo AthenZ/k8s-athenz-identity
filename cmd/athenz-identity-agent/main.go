@@ -154,7 +154,7 @@ func parseFlags(program string, args []string) (*params, error) {
 	}
 	return &params{
 		addr:          addr,
-		handler:       util.NewAccessLogHandler(handler),
+		handler:       util.NewAccessLogHandler(handler, nil),
 		shutdownGrace: sg,
 		driverSource:  driverSource,
 		driverTarget:  driverTarget,
