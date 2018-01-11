@@ -7,17 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 )
@@ -29,61 +25,45 @@ type PodInitializer interface {
 	Update(pod *v1.Pod) error // update the pod with extra information/ containers
 }
 
-type watchConfg struct {
-	initializer PodInitializer // the pod initializer
-}
-
 type watcher struct {
+	podWatch    *util.PodWatcher      // the internal watcher
 	initializer PodInitializer        // the initializer implementation
-	stop        chan struct{}         // the channel that controls the watch
-	once        *sync.Once            // close stop chan exactly once
 	cs          *kubernetes.Clientset // pod update interface
-	indexer     cache.Indexer         // the indexer to find pods
 }
 
 // newWatcher creates a pod watcher.
 func newWatcher(clientset *kubernetes.Clientset, initializer PodInitializer, resync time.Duration) (*watcher, error) {
-	watchList := cache.NewListWatchFromClient(clientset.CoreV1().RESTClient(), "pods", v1.NamespaceAll, fields.Everything())
-	// Wrap the returned watchlist to include
-	// the `IncludeUninitialized` list option when setting up watch clients.
-	podListWatcher := &cache.ListWatch{
-		ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-			options.IncludeUninitialized = true
-			return watchList.List(options)
-		},
-		WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-			options.IncludeUninitialized = true
-			return watchList.Watch(options)
-		},
-	}
-
-	stop := make(chan struct{})
-	var o sync.Once
 	w := &watcher{
 		initializer: initializer,
-		stop:        stop,
-		once:        &o,
 		cs:          clientset,
 	}
-
-	indexer, informer := cache.NewIndexerInformer(podListWatcher, &v1.Pod{}, resync, cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			w.maybeInit(obj.(*v1.Pod))
+	watcher, err := util.NewPodWatcher(v1.NamespaceAll, clientset, util.PodWatchConfig{
+		IncludeUninitialized: true,
+		ResyncInterval:       resync,
+		EventHandlers: &cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				w.maybeInit(obj.(*v1.Pod))
+			},
+			UpdateFunc: func(old, obj interface{}) {
+				w.maybeInit(obj.(*v1.Pod))
+			},
 		},
-		UpdateFunc: func(old, obj interface{}) {
-			w.maybeInit(obj.(*v1.Pod))
-		},
-	}, cache.Indexers{})
-
-	w.indexer = indexer
-	go informer.Run(stop)
+	})
+	if err != nil {
+		return nil, err
+	}
+	w.podWatch = watcher
 	return w, nil
 }
 
-func (w *watcher) maybeInit(pod *v1.Pod) (ferr error) {
+func (w *watcher) start() {
+	w.podWatch.Start()
+}
+
+func (w *watcher) maybeInit(pod *v1.Pod) (finalErr error) {
 	defer func() {
-		if ferr != nil {
-			log.Printf("pod init error %s/%s, %v", pod.Namespace, pod.Name, ferr)
+		if finalErr != nil {
+			log.Printf("pod init error %s/%s, %v", pod.Namespace, pod.Name, finalErr)
 		}
 	}()
 	name := w.initializer.Name()
@@ -136,20 +116,6 @@ func (w *watcher) maybeInit(pod *v1.Pod) (ferr error) {
 	return nil
 }
 
-func (w *watcher) podByID(id string) (*v1.Pod, error) {
-	p, exists, err := w.indexer.GetByKey(id)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, fmt.Errorf("pod %s not found", id)
-	}
-	return p.(*v1.Pod), nil
-}
-
 func (w *watcher) Close() error {
-	w.once.Do(func() {
-		close(w.stop)
-	})
-	return nil
+	return w.podWatch.Close()
 }

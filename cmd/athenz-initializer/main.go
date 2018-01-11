@@ -135,6 +135,7 @@ func run(config *rest.Config, program string, args []string, stopChan <-chan str
 		return err
 	}
 	defer params.Close()
+	params.watcher.start()
 	<-stopChan
 	return nil
 }

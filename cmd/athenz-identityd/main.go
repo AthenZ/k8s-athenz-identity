@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -115,15 +113,17 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		return nil, fmt.Errorf("unable to create clientset, %v", err)
 	}
 
+	watcher, err := util.NewPodWatcher("", cs, util.PodWatchConfig{})
+	if err != nil {
+		return nil, fmt.Errorf("create pod watcher: %v", err)
+	}
+	watcher.Start()
+
 	publicSource := keys.NewPublicKeySource(publicKeyDir, secretName)
 	mapper := identity.NewMapper(cc)
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
-			parts := strings.SplitN(podID, "/", 2)
-			if len(parts) < 2 {
-				return nil, fmt.Errorf("invalid pod id %q, want namespace/name", podID)
-			}
-			pod, err := cs.CoreV1().Pods(parts[0]).Get(parts[1], meta_v1.GetOptions{})
+			pod, err := watcher.PodForKey(podID)
 			if err != nil {
 				return nil, err
 			}
@@ -157,7 +157,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 		}),
 		tls:           conf,
 		shutdownGrace: sg,
-		closers:       []io.Closer{closer},
+		closers:       []io.Closer{closer, watcher},
 	}, nil
 }
 
