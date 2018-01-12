@@ -26,11 +26,6 @@ const (
 	ServiceRoot TrustedSource = "athenz-service" // root CA for certs minted by Athenz
 )
 
-// isSystemNamespace returns true if the namespace is a system namespace.
-func isSystemNamespace(ns string) bool {
-	return strings.HasPrefix(ns, "kube-")
-}
-
 func mangleDomain(domain string) (namespace string) {
 	dubdash := strings.Replace(domain, "-", "--", -1)
 	return strings.Replace(dubdash, ".", "-", -1)
@@ -43,12 +38,26 @@ func unmangleDomain(ns string) (domain string) {
 
 // ClusterConfiguration is the config for the cluster
 type ClusterConfiguration struct {
-	DNSSuffix       string                   `json:"dns-suffix"`       // the DNS suffix for kube-dns as well as Athenz minted certs
-	AdminDomain     string                   `json:"admin-domain"`     // the admin domain used for namespace to domain mapping
-	ZTSEndpoint     string                   `json:"zts-endpoint"`     // ZTS endpoint with /v1 path
-	ProviderService string                   `json:"provider-service"` // the provider service as a fully qualified Athenz name
-	TrustRoots      map[TrustedSource]string `json:"trust-roots"`      // CA certs for various trusted sources
-	AuthHeader      string                   `json:"auth-header"`      // auth header name for Athenz requests
+	DNSSuffix        string                   `json:"dns-suffix"`        // the DNS suffix for kube-dns as well as Athenz minted certs
+	AdminDomain      string                   `json:"admin-domain"`      // the admin domain used for namespace to domain mapping
+	ZTSEndpoint      string                   `json:"zts-endpoint"`      // ZTS endpoint with /v1 path
+	ProviderService  string                   `json:"provider-service"`  // the provider service as a fully qualified Athenz name
+	TrustRoots       map[TrustedSource]string `json:"trust-roots"`       // CA certs for various trusted sources
+	AuthHeader       string                   `json:"auth-header"`       // auth header name for Athenz requests
+	SystemNamespaces []string                 `json:"system-namespaces"` // system namespaces in addition to those starting with "kube-"
+}
+
+// isSystemNamespace returns true if the namespace is a system namespace.
+func (c *ClusterConfiguration) isSystemNamespace(ns string) bool {
+	if strings.HasPrefix(ns, "kube-") {
+		return true
+	}
+	for _, sn := range c.SystemNamespaces {
+		if ns == sn {
+			return true
+		}
+	}
+	return false
 }
 
 // trustRoot returns an x509 certificate pool for trusting the supplied source.
@@ -77,7 +86,7 @@ func (c *ClusterConfiguration) ServiceURLHost(domain, service string) string {
 
 // NamespaceToDomain converts a k8s namespace to an Athenz domain.
 func (c *ClusterConfiguration) NamespaceToDomain(ns string) (domain string) {
-	if isSystemNamespace(ns) {
+	if c.isSystemNamespace(ns) {
 		domain = fmt.Sprintf("%s.%s", c.AdminDomain, ns)
 	} else {
 		domain = unmangleDomain(ns)
