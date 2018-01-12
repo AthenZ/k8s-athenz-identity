@@ -2,7 +2,7 @@
 // Licensed under the terms of the BSD-3-Clause license. See LICENSE file for terms.
 
 // Package keys provides a mechanism to get versioned keys.
-package keys
+package util
 
 import (
 	"crypto"
@@ -13,13 +13,18 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
+
+// SigningKey encapsulates a signing key
+type SigningKey struct {
+	URI     string        // the URI that identifies the key
+	Type    KeyType       // key type
+	Value   crypto.Signer // the private key
+	Version string        // key version
+}
 
 type versionedFiles struct {
 	dir    string
@@ -135,16 +140,16 @@ func NewPrivateKeySource(dir string, secretName string) *PrivateKeySource {
 }
 
 // SigningKey returns the current signing key.
-func (pks *PrivateKeySource) SigningKey() (*identity.SigningKey, error) {
+func (pks *PrivateKeySource) SigningKey() (*SigningKey, error) {
 	contents, version, err := pks.files.latestVersionContents()
 	if err != nil {
 		return nil, err
 	}
-	keyType, key, err := util.PrivateKeyFromPEMBytes(contents)
+	keyType, key, err := PrivateKeyFromPEMBytes(contents)
 	if err != nil {
 		return nil, err
 	}
-	return &identity.SigningKey{
+	return &SigningKey{
 		URI:     secretURI(pks.secretName, version),
 		Type:    keyType,
 		Value:   key,
@@ -181,5 +186,5 @@ func (pks *PublicKeySource) PublicKey(issuerURI string) (pubKey crypto.PublicKey
 	if err != nil {
 		return nil, err
 	}
-	return util.PublicKeyFromPEMBytes(contents)
+	return PublicKeyFromPEMBytes(contents)
 }

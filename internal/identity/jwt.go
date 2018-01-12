@@ -30,7 +30,7 @@ type jwtPayload struct {
 }
 
 // signJWT signs the payload using the specified attributes.
-func signJWT(payload *jwtPayload, key *SigningKey, expiry time.Duration) (string, error) {
+func signJWT(payload *jwtPayload, key *util.SigningKey, expiry time.Duration) (string, error) {
 	claims := &jwt.StandardClaims{
 		ExpiresAt: time.Now().Add(expiry).Unix(),
 		Issuer:    key.URI,

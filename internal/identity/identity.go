@@ -17,16 +17,8 @@ const (
 	jwtAudience = "k8s-athenz-identity"
 )
 
-// SigningKey encapsulates a signing key
-type SigningKey struct {
-	URI     string        // the URI that identifies the key
-	Type    util.KeyType  // key type
-	Value   crypto.Signer // the private key
-	Version string        // key version
-}
-
 // SigningKeyProvider is a function that can provide a signing key.
-type SigningKeyProvider func() (*SigningKey, error)
+type SigningKeyProvider func() (*util.SigningKey, error)
 
 // AttributeProvider provides attributes given a pod ID.
 type AttributeProvider func(podID string) (*PodSubject, error)

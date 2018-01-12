@@ -20,7 +20,6 @@ import (
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
 	"github.com/yahoo/k8s-athenz-identity/internal/services/ident"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 )
 
@@ -132,7 +131,7 @@ func parseFlags(program string, args []string) (*params, error) {
 		mapper:      identity.NewMapper(cc),
 	}
 
-	privateSource := keys.NewPrivateKeySource(signingKeyDir, secretName)
+	privateSource := util.NewPrivateKeySource(signingKeyDir, secretName)
 
 	sc := identity.SerializerConfig{
 		TokenExpiry: te,

@@ -21,7 +21,6 @@ import (
 	"github.com/dimfeld/httptreemux"
 	"github.com/yahoo/k8s-athenz-identity/internal/config"
 	"github.com/yahoo/k8s-athenz-identity/internal/identity"
-	"github.com/yahoo/k8s-athenz-identity/internal/services/keys"
 	"github.com/yahoo/k8s-athenz-identity/internal/util"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -119,7 +118,7 @@ func parseFlags(clusterConfig *rest.Config, program string, args []string) (*par
 	}
 	watcher.Start()
 
-	publicSource := keys.NewPublicKeySource(publicKeyDir, secretName)
+	publicSource := util.NewPublicKeySource(publicKeyDir, secretName)
 	mapper := identity.NewMapper(cc)
 	verifier, err := identity.NewVerifier(identity.VerifierConfig{
 		AttributeProvider: func(podID string) (*identity.PodSubject, error) {
