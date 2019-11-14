@@ -91,14 +91,48 @@ There are a variety of prerequisites required in order to run this identity prov
 they are specified below.
 - **Kubernetes cluster** - A running Kubernetes cluster is required with access to
 the control plane. More information on how to setup a cluster can be found in the
-official documentation [here](https://kubernetes.io/docs/setup/).
-- **Athenz** - Athenz must be fully deployed in order to setup this identity provider
-as an Copper Argos callback endpoint. More information and setup steps can be found
-[here](http://www.athenz.io/).
+official documentation [here](https://kubernetes.io/docs/setup/). The version must be 
+1.13 or higher.
+- **Athenz** - [ZMS](https://yahoo.github.io/athenz/site/setup_zms_prod/), 
+[ZTS](https://yahoo.github.io/athenz/site/setup_zts_prod/) and optionally
+[UI](https://yahoo.github.io/athenz/site/setup_ui_prod/) servers installed.
 
-### Configuration
+### Setup
+1. Clone the repository and use kubectl to create the [RBAC](k8s/rbac.yaml), and
+Identityd [deployment](k8s/deployment.yaml) and [service](k8s/service.yaml)
+
+```
+git clone https://github.com/yahoo/k8s-athenz-identity.git
+kubectl apply -f k8s-athenz-identity/k8s
+```
+
+2. Create an Athenz domain and a service using [zms-cli](https://github.com/yahoo/athenz/tree/master/utils/zms-cli)
+or ZMS UI corresponding to the Identityd k8s service
+
+```
+# Build the zms-cli utility to interact with the Athenz ZMS server
+go get https://github.com/yahoo/athenz/tree/master/utils/zms-cli
+
+# Create an Athenz domain associated with the kubernetes cluster
+zms-cli add-domain k8s-cluster-name 
+
+# Create an Athenz service on the cluster domain to associate it with the Identityd kubernetes service 
+zms-cli -d k8s-cluster-name add-service identityd
+
+# Set the Identityd service endpoint to point to the kubernetes identityd service
+zms-cli -d k8s-cluster-name set-service-endpoint identityd identityd.default.svc.cluster.local
+``` 
 
 ### Usage
+1. The application deployments that require Athenz identity certs the SIA container
+and the kubernetes bound service account JWT volume mount added to the pod template
+using the sample [patch](k8s/patch/sia.yaml)
+
+```
+kubectl patch deploy <app.yaml> -p k8s-athenz-identity/k8s/patch/sia.yaml
+``` 
+
+The generated Athenz cert and key is stored under the `tls-certs` volume mount.
 
 ## Troubleshooting
 
