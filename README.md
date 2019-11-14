@@ -45,20 +45,44 @@ bound service account JWT as attestation data
 for validation
 5. Certificate is minted and returned to the SIA container
 
-### Identityd
+### Identity Provider
 Identity provider is an Athenz Copper Argos callback provider which validates
 requests for new identities. It runs as a deployment in the cluster and has an
 in-memory cache of all running pods.
 
 There are the steps the Identity provider follows to validate an identity:
 1. Validate the bound service account JWT of the attestation data is valid, this
-involves either making a request to the Kubernetes API or using public key validation.
+involves either making a request to the Kubernetes TokenReview API or using public
+key validation.
 2. Validate a pod which is requesting the identity is actually running within the
 cluster.
 3. Validate the CSR details including IP, SANS, common name, etc.
 
-#### OPA
+The above checks are implemented using OPA rego policies.
 
+#### Open Policy Agent (OPA) in the Identity Provider
+OPA provides a policy evaluation engine and a Rego language to write the policies.
+The most common use case of OPA in kubernetes is for admission control. It is
+deployed as a pod and the admission control checks are written as rego policy
+checks and loaded on the OPA as configmaps. If the admission checks require to
+lookup any kubernetes object, OPA provides replication (cache) setup for cluster
+& namespace scoped resources. The significant advantages include modifying
+checks (configmaps) without redeploying OPA, and capturing metrics for every decision.
+
+The idea is to run the identity provider pod as an OPA instance and define the
+identity verification checks as Rego policies written in configmaps. OPA’s rego
+evaluation engine also has built-in support for JWT verification and making HTTP
+requests. This helps us to verify the attestation data JWT either by making kubernetes
+API TokenReview requests or by locally validating the signature using the pre-loaded
+kubernetes API public key. Other field verifications that depend on the pod metadata
+can use the resource replication feature and cache the pods resources. 
+
+The identity provider pod is composed of two containers:
+* opa - evaluates the identity verification checks with information provided with
+from the configmap checks and replicated pods resource information
+* mgmt - fetches the configmap checks from the configured system namespace and the
+cluster pod resources by watching the kubernetes API and storing them on OPA over
+localhost PUT calls.
 
 ## Getting Started
 
