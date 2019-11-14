@@ -1,36 +1,32 @@
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
-metadata: { name: athenz-initializer }
-rules: [ { apiGroups: [""], resources: ["pods"], verbs: [ "get", "list", "watch", "patch", "initialize" ] } ]
+metadata:
+  name: identityd
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
 
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata: { name: athenz-initializer }
-roleRef: { kind: ClusterRole, name: athenz-initializer, apiGroup: rbac.authorization.k8s.io }
-subjects:
-- kind: User
-  name: system:serviceaccount:k8s-admin:athenz-initializer
-  apiGroup: rbac.authorization.k8s.io
-
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRole
-metadata: { name: athenz-identityd }
-rules: [ { apiGroups: [""], resources: ["pods", "services"], verbs: [ "get", "list", "watch" ] } ]
-
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: athenz-identityd
+  name: identityd
 subjects:
-- kind: User
-  name: system:serviceaccount:k8s-admin:athenz-identityd
-  apiGroup: rbac.authorization.k8s.io
+- kind: ServiceAccount
+  name: identityd
 roleRef:
   kind: ClusterRole
-  name: athenz-identityd
+  name: identityd
   apiGroup: rbac.authorization.k8s.io
-

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: identityd
+  name: identityd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identityd
+  template:
+    metadata:
+      labels:
+        app: identityd
+    spec:
+      containers:
+      - args:
+        - run
+        - --server
+        - --config-file=/config/config.yaml
+        image: openpolicyagent/opa:0.14.0
+        imagePullPolicy: IfNotPresent
+        name: opa
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' > /tmp/api-pubkey.pem
+                echo {\"cert\"":" \"$(cat /tmp/api-pubkey.pem)\"}  > /tmp/cert.json
+                curl "localhost:8181/v1/data/kubernetes/keys" -X PUT -d @/tmp/cert.json
+        volumeMounts:
+        - mountPath: /config
+          name: config
+          readOnly: true
+      - args:
+        - --opa-url=http://127.0.0.1:8181/v1
+        - --enable-policies=true
+        - --replicate-path=kubernetes
+        - --replicate=v1/pods
+        image: docker.ouroath.com:4443/yahoo-cloud/kube-mgmt:20190416-202254
+        imagePullPolicy: IfNotPresent
+        name: mgmt
+      initContainers:
+      - command:
+        - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /keys/api-pubkey.pem
+        image: docker.ouroath.com:4443/yahoo-cloud/kube-mgmt:20190416-202254
+        imagePullPolicy: IfNotPresent
+        name: initpolicy
+        resources:
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /keys
+          name: keys
+      serviceAccountName: identityd
+      volumes:
+      - configMap:
+          name: opa-config
+        name: config
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: identityd
+  name: identityd
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: identityd
+  name: identityd
+spec:
+  selector:
+    app: identityd
+  ports:
+  - protocol: TCP
+    port: 8181
+    targetPort: 8181
