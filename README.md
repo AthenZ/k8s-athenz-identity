@@ -21,7 +21,7 @@ the requested identity.
 
 ## Architecture
 The architecture sections dives into the details of the various components built
-to create a Copper Argos identity provider.
+to create an Athenz Copper Argos identity provider.
 
 ![Screenshot](docs/images/architecture.png)
 
@@ -30,36 +30,37 @@ Service Identity Agent (SIA) is a container which is bundled as a sidecar for a
 pod. It is primarily responsible for creating a CSR for the application workload
 and requesting a certificate from Athenz ZTS. SIA is mounted with a bound Kubernetes
 service account JWT issued with an audience specific to the identity provider,
-“athenz-identityd” (can be Athenz service of identity provider).
+“athenz-identityd” (can be the Athenz service of identity provider).
 
 These are the steps the SIA container follows to retrieve an identity:
 1. Creates a new private key and signs a CSR with the subject common name as
-“<athenz-domain>.<athenz-service>”, required SANs, etc.
+“athenz-domain.athenz-service”, required SANs, etc.
 2. Constructs an Athenz InstanceRegisterInformation object with the CSR and the
-bound service account JWT as attestation data
-3. Makes a request to ZTS for the postInstanceRegister API call.
+bound service account JWT as attestation data.
+3. Makes a request to ZTS to the postInstanceRegister API call.
 4. ZTS forwards the attestation data and CSR details to the identity provider
-for validation
-5. Certificate is minted and returned to the SIA container
+for validation.
+5. Certificate is minted and returned to the SIA container.
+6. SIA writes the certificates to a directory for the application to consume.
 
 ### Identity Provider
 Identity provider is an Athenz Copper Argos callback provider which validates
 requests for new identities. It runs as a deployment in the cluster and has an
 in-memory cache of all running pods.
 
-There are the steps the Identity provider follows to validate an identity:
+These are the steps the Identity provider follows to validate an identity:
 1. Validate the bound service account JWT of the attestation data is valid, this
 involves either making a request to the Kubernetes TokenReview API or using public
 key validation.
-2. Validate a pod which is requesting the identity is actually running within the
+2. Validate the pod which is requesting the identity is actually running within the
 cluster.
 3. Validate the CSR details including IP, SANS, common name, etc.
 
 The above checks are implemented using OPA rego policies.
 
-#### Open Policy Agent (OPA) in the Identity Provider
+#### Using Open Policy Agent (OPA) for the Identity Provider
 OPA provides a policy evaluation engine and a Rego language to write the policies.
-The most common use case of OPA in kubernetes is for admission control. It is
+The most common use case of OPA in Kubernetes is for admission control. It is
 deployed as a pod and the admission control checks are written as rego policy
 checks and loaded on the OPA as configmaps. If the admission checks require to
 lookup any kubernetes object, OPA provides replication (cache) setup for cluster
@@ -72,12 +73,12 @@ evaluation engine also has built-in support for JWT verification and making HTTP
 requests. This helps us to verify the attestation data JWT either by making kubernetes
 API TokenReview requests or by locally validating the signature using the pre-loaded
 kubernetes API public key. Other field verifications that depend on the pod metadata
-can use the resource replication feature and cache the pods resources. 
+can use the resource replication feature and cache the pod resources. 
 
 The identity provider pod is composed of two containers:
-* opa - evaluates the identity verification checks with information provided with
+- **Opa** - Evaluates the identity verification checks with information provided with
 from the configmap checks and replicated pods resource information
-* mgmt - fetches the configmap checks from the configured system namespace and the
+- **Mgmt** - Fetches the configmap checks from the configured system namespace and the
 cluster pod resources by watching the kubernetes API and storing them on OPA over
 localhost PUT calls.
 
