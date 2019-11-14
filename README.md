@@ -5,22 +5,19 @@ pods.
 
 ## Background
 Due to Kubernetes itself not providing a mechanism to provision unique identities per
-application pods, the need arose to create a control plane components which fulfills
+application pods, the need arose to create a control plane component which fulfills
 this use case.
 
 ### Athenz
-Athenz is an IAM provider which allows users to define role based access control
-(RBAC) for users and services. It also acts as a certificate authority (CA) by
-provisioning instances with unique identities through X.509 certificates.
+[Athenz](https://www.athenz.io/) is an IAM provider which allows users to define
+role based access control (RBAC) for users and services. It also acts as a certificate
+authority (CA) by provisioning instances with unique identities through X.509 certificates.
 
-More information can be found on their official [website](https://www.athenz.io/).
-
-### Copper Argos
-Copper Argos provides identity provisioning systems with a callback provider
-concept which acts as an extra security layer to validate that the instances
-being provisioned are allowed to receive the requested identity.
-
-More information can be found on the Athenz website [here](https://yahoo.github.io/athenz/site/copper_argos_dev/)
+### Athenz Copper Argos
+[Athenz Copper Argos](https://yahoo.github.io/athenz/site/copper_argos_dev/) provides
+identity provisioning systems with a callback provider concept which acts as an extra
+security layer to validate that the instances being provisioned are allowed to receive
+the requested identity.
 
 ## Architecture
 The architecture sections dives into the details of the various components built
@@ -99,7 +96,7 @@ official documentation [here](https://kubernetes.io/docs/setup/). The version mu
 
 ### Setup
 1. Clone the repository and use kubectl to create the [RBAC](k8s/rbac.yaml), and
-Identityd [deployment](k8s/deployment.yaml) and [service](k8s/service.yaml)
+Identityd [deployment and service](k8s/identityd.yaml)
 
 ```
 git clone https://github.com/yahoo/k8s-athenz-identity.git
