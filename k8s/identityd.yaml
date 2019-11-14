@@ -26,21 +26,9 @@ spec:
           postStart:
             exec:
               command:
-              - /bin/sh
-                                                                                                                                                                      - -c
-                                                                                                                                                                      - |
-                # Fetch kubernetes API public key (cert)
-                echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/api-pubkey.pem
-
-                # Convert the PEM format into a stringified JSON data document
-                cat <<EOF > /tmp/cert.json
-                {
-                  "cert": "$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' /tmp/api-pubkey.pem)"
-                    }
-                    EOF
-
-                    # Store the cert document on the OPA data path to be accessible during validation
-                    curl localhost:8181/v1/data/kubernetes/keys -X PUT -d @/tmp/cert.json -H 'Content-Type: application/json'
+              - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' > /tmp/api-pubkey.pem
+                echo {\"cert\"":" \"$(cat /tmp/api-pubkey.pem)\"}  > /tmp/cert.json
+                curl "localhost:8181/v1/data/kubernetes/keys" -X PUT -d @/tmp/cert.json
         volumeMounts:
         - mountPath: /config
           name: config
@@ -55,10 +43,7 @@ spec:
         name: mgmt
       initContainers:
       - command:
-        - /bin/sh
-        - -c
-        - |
-          echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /keys/api-pubkey.pem
+        - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /keys/api-pubkey.pem
         image: docker.ouroath.com:4443/yahoo-cloud/kube-mgmt:20190416-202254
         imagePullPolicy: IfNotPresent
         name: initpolicy
