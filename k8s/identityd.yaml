@@ -38,7 +38,7 @@ spec:
         - --enable-policies=true
         - --replicate-path=kubernetes
         - --replicate=v1/pods
-        image: docker.ouroath.com:4443/yahoo-cloud/kube-mgmt:20190416-202254
+        image: openpolicyagent/kube-mgmt:0.10
         imagePullPolicy: IfNotPresent
         name: mgmt
       initContainers:
