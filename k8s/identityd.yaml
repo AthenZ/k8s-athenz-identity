@@ -44,7 +44,7 @@ spec:
       initContainers:
       - command:
         - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /keys/api-pubkey.pem
-        image: docker.ouroath.com:4443/yahoo-cloud/kube-mgmt:20190416-202254
+        image: openpolicyagent/kube-mgmt:0.10
         imagePullPolicy: IfNotPresent
         name: initpolicy
         resources:
