@@ -1,5 +1,0 @@
-FROM ubuntu
-ADD ./_build/bin/athenz-jwt-service /usr/bin/athenz-jwt-service
-ENTRYPOINT ["/usr/bin/athenz-jwt-service"]
-
-

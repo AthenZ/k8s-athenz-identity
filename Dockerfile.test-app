@@ -1,5 +1,0 @@
-FROM ubuntu
-ADD _build/bin/athenz-identity-test-app /usr/bin/athenz-identity-test-app
-ENTRYPOINT ["/usr/bin/athenz-identity-test-app"]
-
-

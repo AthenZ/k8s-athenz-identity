@@ -1,5 +1,0 @@
-FROM ubuntu
-ADD ./_build/bin/athenz-identityd /usr/bin/athenz-identityd
-ENTRYPOINT ["/usr/bin/athenz-identityd"]
-
-
