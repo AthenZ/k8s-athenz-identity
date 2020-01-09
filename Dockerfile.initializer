@@ -1,4 +1,0 @@
-FROM ubuntu
-ADD ./_build/bin/athenz-initializer /usr/bin/athenz-initializer
-ENTRYPOINT ["/usr/bin/athenz-initializer"]
-
