@@ -12,8 +12,9 @@ import (
 // NamespaceToDomain converts a kube namespace to an Athenz domain
 func NamespaceToDomain(ns string) (domain string) {
 	//TODO: handle system namespaces
-	dotted := strings.Replace(ns, "-", ".", -1)
-	return strings.Replace(dotted, "..", "-", -1)
+	return "k8s.omega.beta1-bf1.kube-test"
+	//dotted := strings.Replace(ns, "-", ".", -1)
+	//return strings.Replace(dotted, "..", "-", -1)
 }
 
 // ServiceAccountToService converts a kube serviceaccount name to an Athenz service

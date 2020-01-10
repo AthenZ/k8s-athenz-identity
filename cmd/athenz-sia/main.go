@@ -24,7 +24,7 @@ const serviceName = "athenz-sia"
 
 var errEarlyExit = fmt.Errorf("early exit")
 
-// EnvOrDefault returns the value of the supplied variable or a default string.
+// envOrDefault returns the value of the supplied variable or a default string.
 func envOrDefault(name string, defaultValue string) string {
 	v := os.Getenv(name)
 	if v == "" {
@@ -33,6 +33,7 @@ func envOrDefault(name string, defaultValue string) string {
 	return v
 }
 
+// parseFlags parses ENV and cmd line args and returns an IdentityConfig object
 func parseFlags(program string, args []string) (*identity.IdentityConfig, error) {
 	var (
 		mode            = envOrDefault("MODE", "init")
@@ -45,6 +46,10 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		caCertFile      = envOrDefault("CA_CERT_FILE", "/var/run/athenz/ca.cert.pem")
 		logDir          = envOrDefault("LOG_DIR", "/var/log/athenz-sia")
 		logLevel        = envOrDefault("LOG_LEVEL", "INFO")
+		namespace       = envOrDefault("NAMESPACE", "")
+		serviceAccount  = envOrDefault("SERVICEACCOUNT", "")
+		podIP           = envOrDefault("POD_IP", "")
+		podUID          = envOrDefault("POD_UID", "")
 		saTokenFile     = envOrDefault("SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/bound-serviceaccount/token")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
@@ -124,21 +129,20 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	}
 
 	return &identity.IdentityConfig{
+		Init:            init,
 		KeyFile:         keyFile,
 		CertFile:        certFile,
 		CaCertFile:      caCertFile,
-		Mode:            mode,
-		Init:            init,
 		Refresh:         ri,
 		Reloader:        reloader,
 		SaTokenFile:     saTokenFile,
 		Endpoint:        endpoint,
 		ProviderService: providerService,
 		DNSSuffix:       dnsSuffix,
-		Namespace:       os.Getenv("NAMESPACE"),
-		Serviceaccount:  os.Getenv("SERVICEACCOUNT"),
-		PodIP:           os.Getenv("POD_IP"),
-		PodUID:          os.Getenv("POD_UID"),
+		Namespace:       namespace,
+		ServiceAccount:  serviceAccount,
+		PodIP:           podIP,
+		PodUID:          podUID,
 	}, nil
 }
 
@@ -185,10 +189,16 @@ func run(idConfig *identity.IdentityConfig, stopChan <-chan struct{}) error {
 		log.Errorf("Failed to create/refresh cert: %s. Retrying in %s", err.Error(), backoffDelay)
 	}
 
+	handler, err := identity.InitIdentityHandler(*idConfig)
+	if err != nil {
+		log.Errorf("Error while initializing handler: %s", err.Error())
+		return err
+	}
+
 	postRequest := func() error {
 		log.Infoln("Attempting to create/refresh x509 cert from identity provider...")
 
-		id, keyPem, err := identity.GetX509Cert(*idConfig)
+		id, keyPem, err := handler.GetX509Cert()
 		if err != nil {
 			log.Errorf("Error while creating/refreshing x509 cert: %s", err.Error())
 			return err
@@ -235,9 +245,6 @@ func main() {
 			return
 		}
 		log.Fatalln(err)
-	}
-	if idConfig == nil {
-		return
 	}
 
 	log.Infoln("Booting up with args", os.Args)

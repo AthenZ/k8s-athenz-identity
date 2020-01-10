@@ -5,11 +5,9 @@ package log
 
 import (
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/mash/go-accesslog"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -66,34 +64,6 @@ func newLogger(logFile, level string, formatter logrus.Formatter, enableStdOut b
 // InitLogger initializes a logger object with log rotation
 func InitLogger(logFile, level string, enableStdOut bool) {
 	log = newLogger(logFile, level, nil, enableStdOut)
-}
-
-// InitAuditLogger initializes an audit logger object
-func InitAuditLogger(logFile string) {
-	audit = newLogger(logFile,
-		logrus.InfoLevel.String(),
-		&logrus.JSONFormatter{
-			FieldMap: logrus.FieldMap{
-				logrus.FieldKeyLevel: "audit",
-			},
-		},
-		false)
-}
-
-type AccessLogger struct {
-	access *logrus.Logger
-}
-
-func (l *AccessLogger) Log(record accesslog.LogRecord) {
-	l.access.Printf("%s %s %d %v %v", record.Method, record.Uri, record.Status, record.ElapsedTime, record.CustomRecords)
-}
-
-// InitAccessLogger returns a handler that wraps the supplied delegate with access logging.
-func InitAccessLogger(h http.Handler, logFile, level string) http.Handler {
-	l := &AccessLogger{
-		access: newLogger(logFile, level, nil, true),
-	}
-	return accesslog.NewLoggingHandler(h, l)
 }
 
 func Debugf(format string, args ...interface{}) {
@@ -190,12 +160,4 @@ func Fatalln(args ...interface{}) {
 
 func Panicln(args ...interface{}) {
 	log.Panicln(args...)
-}
-
-func Audit(fields map[string]interface{}, args ...interface{}) {
-	audit.WithFields(fields).Info(args...)
-}
-
-func Auditln(fields map[string]interface{}, args ...interface{}) {
-	audit.WithFields(fields).Infoln(args...)
 }

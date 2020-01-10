@@ -24,40 +24,60 @@ type IdentityConfig struct {
 	CertFile        string
 	CaCertFile      string
 	Refresh         time.Duration
-	Mode            string
 	Reloader        *util.CertReloader
 	SaTokenFile     string
 	Endpoint        string
 	ProviderService string
 	DNSSuffix       string
 	Namespace       string
-	Serviceaccount  string
+	ServiceAccount  string
 	PodIP           string
 	PodUID          string
 }
 
-func generateKeyAndCSR(idConfig IdentityConfig) (keyPEM, csrPEM []byte, err error) {
+type identityHandler struct {
+	config IdentityConfig
+	client zts.ZTSClient
 
-	domain := util.NamespaceToDomain(idConfig.Namespace)
+	domain     string
+	service    string
+	csrOptions util.CSROptions
+}
+
+func InitIdentityHandler(config IdentityConfig) (*identityHandler, error) {
+
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	if !config.Init {
+		tlsConfig.GetClientCertificate = func(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return config.Reloader.GetLatestCertificate()
+		}
+	}
+	client := zts.NewClient(config.Endpoint, &http.Transport{
+		TLSClientConfig: tlsConfig,
+	})
+
+	domain := util.NamespaceToDomain(config.Namespace)
 	domainDNSPart := util.DomainToDNSPart(domain)
-	service := util.ServiceAccountToService(idConfig.Serviceaccount)
-	ip := net.ParseIP(idConfig.PodIP)
+	service := util.ServiceAccountToService(config.ServiceAccount)
+	ip := net.ParseIP(config.PodIP)
 	if ip == nil {
-		return nil, nil, errors.New("Pod IP is nil")
+		return nil, errors.New("pod IP is nil")
 	}
 	spiffeURI, err := util.SpiffeURI(domain, service)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	sans := []string{
-		fmt.Sprintf("%s.%s.%s", service, domainDNSPart, idConfig.DNSSuffix),
-		fmt.Sprintf("*.%s.%s.%s", service, domainDNSPart, idConfig.DNSSuffix),
-		fmt.Sprintf("%s.instanceid.athenz.%s", idConfig.PodUID, idConfig.DNSSuffix),
+		fmt.Sprintf("%s.%s.%s", service, domainDNSPart, config.DNSSuffix),
+		fmt.Sprintf("*.%s.%s.%s", service, domainDNSPart, config.DNSSuffix),
+		fmt.Sprintf("%s.instanceid.athenz.%s", config.PodUID, config.DNSSuffix),
 	}
 
 	subject := pkix.Name{
-		OrganizationalUnit: []string{idConfig.ProviderService},
+		OrganizationalUnit: []string{config.ProviderService},
 		CommonName:         fmt.Sprintf("%s.%s", domain, service),
 	}
 
@@ -69,53 +89,44 @@ func generateKeyAndCSR(idConfig IdentityConfig) (keyPEM, csrPEM []byte, err erro
 			URIs:        []url.URL{*spiffeURI},
 		},
 	}
-	return util.GenerateKeyAndCSR(csrOptions)
+
+	return &identityHandler{
+		config:     config,
+		client:     client,
+		domain:     domain,
+		service:    service,
+		csrOptions: csrOptions,
+	}, nil
 }
 
-func GetX509Cert(idConfig IdentityConfig) (*zts.InstanceIdentity, []byte, error) {
-	keyPEM, csrPEM, err := generateKeyAndCSR(idConfig)
+// GetX509Cert makes ZTS API calls to generate an X.509 certificate
+func (h *identityHandler) GetX509Cert() (*zts.InstanceIdentity, []byte, error) {
+	keyPEM, csrPEM, err := util.GenerateKeyAndCSR(h.csrOptions)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-	}
-	if !idConfig.Init {
-		cert, err := idConfig.Reloader.GetLatestCertificate()
-		if err != nil {
-			return nil, nil, err
-		}
-		tlsConfig.Certificates = []tls.Certificate{*cert}
-	}
-
-	client := zts.NewClient(idConfig.Endpoint, &http.Transport{
-		TLSClientConfig: tlsConfig,
-	})
-
-	domain := util.NamespaceToDomain(idConfig.Namespace)
-	service := util.ServiceAccountToService(idConfig.Serviceaccount)
-	saToken, err := ioutil.ReadFile(idConfig.SaTokenFile)
+	saToken, err := ioutil.ReadFile(h.config.SaTokenFile)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	if idConfig.Init {
-		id, _, err := client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
-			Provider:        zts.ServiceName(idConfig.ProviderService),
-			Domain:          zts.DomainName(domain),
-			Service:         zts.SimpleName(service),
+	if h.config.Init {
+		id, _, err := h.client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
+			Provider:        zts.ServiceName(h.config.ProviderService),
+			Domain:          zts.DomainName(h.domain),
+			Service:         zts.SimpleName(h.service),
 			AttestationData: string(saToken),
 			Csr:             string(csrPEM),
 		})
 		return id, keyPEM, err
 	}
 
-	id, err := client.PostInstanceRefreshInformation(
-		zts.ServiceName(idConfig.ProviderService),
-		zts.DomainName(domain),
-		zts.SimpleName(service),
-		zts.PathElement(idConfig.PodUID),
+	id, err := h.client.PostInstanceRefreshInformation(
+		zts.ServiceName(h.config.ProviderService),
+		zts.DomainName(h.domain),
+		zts.SimpleName(h.service),
+		zts.PathElement(h.config.PodUID),
 		&zts.InstanceRefreshInformation{
 			AttestationData: string(saToken),
 			Csr:             string(csrPEM),
