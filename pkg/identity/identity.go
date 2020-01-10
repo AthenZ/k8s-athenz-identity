@@ -8,13 +8,14 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
-	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/yahoo/athenz/clients/go/zts"
+	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 )
 
 // IdentityConfig from cmd line args
@@ -36,15 +37,15 @@ type IdentityConfig struct {
 }
 
 type identityHandler struct {
-	config IdentityConfig
-	client zts.ZTSClient
-
+	config     *IdentityConfig
+	client     zts.ZTSClient
 	domain     string
 	service    string
 	csrOptions util.CSROptions
 }
 
-func InitIdentityHandler(config IdentityConfig) (*identityHandler, error) {
+// InitIdentityHandler initializes the ZTS client and parses the config to create CSR options
+func InitIdentityHandler(config *IdentityConfig) (*identityHandler, error) {
 
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,

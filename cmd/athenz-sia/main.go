@@ -65,9 +65,6 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	f.StringVar(&logLevel, "log-level", logLevel, "logging level")
 	f.StringVar(&saTokenFile, "sa-token-file", saTokenFile, "bound sa jwt token file location")
 
-	var showVersion bool
-	f.BoolVar(&showVersion, "version", false, "Show version information")
-
 	err := f.Parse(args)
 	if err != nil {
 		if err == flag.ErrHelp {
@@ -99,6 +96,7 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		Logger:       log.Debugf,
 		PollInterval: pollInterval,
 	})
+
 	// During the init flow if X.509 cert(and key) already exists,
 	//   - someone is attempting to run init after a pod has been started
 	//   - pod sandbox crashed and kubelet runs the init container
@@ -108,7 +106,6 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	// to the kube and kubelet APIs. So, we might end up getting an X.509 certificate with the old pod IP.
 	// To avoid this, we fail the current run with an error to force SYNC the status on the pod resource and let
 	// the subsequent retry for the init container to attempt to get a new certificate from the identity provider.
-
 	if init && err == nil {
 		log.Errorf("SIA(init) detected the existence of X.509 cert at %s", certFile)
 		cert, err := reloader.GetLatestCertificate()
@@ -189,7 +186,7 @@ func run(idConfig *identity.IdentityConfig, stopChan <-chan struct{}) error {
 		log.Errorf("Failed to create/refresh cert: %s. Retrying in %s", err.Error(), backoffDelay)
 	}
 
-	handler, err := identity.InitIdentityHandler(*idConfig)
+	handler, err := identity.InitIdentityHandler(idConfig)
 	if err != nil {
 		log.Errorf("Error while initializing handler: %s", err.Error())
 		return err

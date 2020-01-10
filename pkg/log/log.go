@@ -12,7 +12,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-var log, audit *logrus.Logger
+var log *logrus.Logger
 
 func newLogger(logFile, level string, formatter logrus.Formatter, enableStdOut bool) *logrus.Logger {
 	var fileWriter io.Writer
