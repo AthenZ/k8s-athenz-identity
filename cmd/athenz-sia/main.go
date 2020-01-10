@@ -1,4 +1,4 @@
-// Copyright 2019, Verizon Media Inc.
+// Copyright 2020, Verizon Media Inc.
 // Licensed under the terms of the 3-Clause BSD license. See LICENSE file in
 // github.com/yahoo/k8s-athenz-identity for terms.
 package main
@@ -6,33 +6,23 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/pkg/identity"
-	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	"github.com/pkg/errors"
+	"github.com/yahoo/athenz/clients/go/zts"
+	"github.com/yahoo/k8s-athenz-identity/pkg/identity"
+	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 	"github.com/yahoo/k8s-athenz-identity/pkg/log"
 )
 
+const serviceName = "athenz-sia"
+
 var errEarlyExit = fmt.Errorf("early exit")
-
-// Version gets set by the build script via LDFLAGS
-var Version string
-
-const (
-	serviceName = "athenz-sia"
-)
-
-func getVersion() string {
-	if Version == "" {
-		return "development version"
-	}
-	return Version
-}
 
 // EnvOrDefault returns the value of the supplied variable or a default string.
 func envOrDefault(name string, defaultValue string) string {
@@ -45,7 +35,7 @@ func envOrDefault(name string, defaultValue string) string {
 
 func parseFlags(program string, args []string) (*identity.IdentityConfig, error) {
 	var (
-		mode            = ""
+		mode            = envOrDefault("MODE", "init")
 		endpoint        = envOrDefault("ENDPOINT", "")
 		providerService = envOrDefault("PROVIDER_SERVICE", "")
 		dnsSuffix       = envOrDefault("DNS_SUFFIX", "")
@@ -53,11 +43,9 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		keyFile         = envOrDefault("KEY_FILE", "/var/run/athenz/service.key.pem")
 		certFile        = envOrDefault("CERT_FILE", "/var/run/athenz/service.cert.pem")
 		caCertFile      = envOrDefault("CA_CERT_FILE", "/var/run/athenz/ca.cert.pem")
-		logDir          = envOrDefault("LOG_DIR", "/var/log/"+serviceName)
+		logDir          = envOrDefault("LOG_DIR", "/var/log/athenz-sia")
 		logLevel        = envOrDefault("LOG_LEVEL", "INFO")
 		saTokenFile     = envOrDefault("SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/bound-serviceaccount/token")
-
-		//TODO add env var from 4.0 branch
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
@@ -86,11 +74,6 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	}
 
 	log.InitLogger(filepath.Join(logDir, fmt.Sprintf("%s.%s.log", serviceName, logLevel)), logLevel, true)
-	if showVersion {
-		log.Println(getVersion())
-		return nil, errEarlyExit
-	}
-
 	if !(mode == "init" || mode == "refresh") {
 		return nil, fmt.Errorf("invalid mode %q must be one of init or refresh", mode)
 	}
@@ -140,8 +123,6 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		return nil, errors.Wrap(err, "unable to read key and cert")
 	}
 
-	// TODO: create identity NewClient()
-
 	return &identity.IdentityConfig{
 		KeyFile:         keyFile,
 		CertFile:        certFile,
@@ -161,29 +142,29 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	}, nil
 }
 
-func id2Res(id *zts.InstanceIdentity, keyPEM []byte) *identity.IdentityContext {
-	return &identity.IdentityContext{
-		KeyPEM:    keyPEM,
-		CertPEM:   []byte(id.X509Certificate),
-		CACertPem: []byte(id.X509CertificateSigner),
-	}
-}
-
 func run(idConfig *identity.IdentityConfig, stopChan <-chan struct{}) error {
 
-	writeFiles := func(id *identity.IdentityContext) error {
+	writeFiles := func(id *zts.InstanceIdentity, keyPEM []byte) error {
+		certPEM := []byte(id.X509Certificate)
+		caCertPEM := []byte(id.X509CertificateSigner)
+		x509Cert, err := util.CertificateFromPEMBytes(certPEM)
+		if err != nil {
+			return errors.Wrap(err, "unable to parse x509 cert")
+		}
+		log.Infof("[New Certificate] Subject: %s, Issuer: %s, NotBefore: %s, NotAfter: %s, SerialNumber: %s",
+			x509Cert.Subject, x509Cert.Issuer, x509Cert.NotBefore, x509Cert.NotAfter, x509Cert.SerialNumber)
 		w := util.NewWriter()
-		log.Debugf("Saving x509 cert[%d bytes] at %s", len(id.CertPEM), idConfig.CertFile)
-		if err := w.AddBytes(idConfig.CertFile, 0644, id.CertPEM); err != nil {
+		log.Debugf("Saving x509 cert[%d bytes] at %s", len(certPEM), idConfig.CertFile)
+		if err := w.AddBytes(idConfig.CertFile, 0644, certPEM); err != nil {
 			return errors.Wrap(err, "unable to save x509 cert")
 		}
-		log.Debugf("Saving x509 key[%d bytes] at %s", len(id.KeyPEM), idConfig.KeyFile)
-		if err := w.AddBytes(idConfig.KeyFile, 0644, id.KeyPEM); err != nil { // TODO: finalize perms and user
+		log.Debugf("Saving x509 key[%d bytes] at %s", len(keyPEM), idConfig.KeyFile)
+		if err := w.AddBytes(idConfig.KeyFile, 0644, keyPEM); err != nil { // TODO: finalize perms and user
 			return errors.Wrap(err, "unable to save x509 key")
 		}
-		if len(id.CACertPem) != 0 {
-			log.Debugf("Saving x509 cacert[%d bytes] at %s", len(id.CACertPem), idConfig.CaCertFile)
-			if err := w.AddBytes(idConfig.CaCertFile, 0644, id.CACertPem); err != nil {
+		if len(caCertPEM) != 0 {
+			log.Debugf("Saving x509 cacert[%d bytes] at %s", len(caCertPEM), idConfig.CaCertFile)
+			if err := w.AddBytes(idConfig.CaCertFile, 0644, caCertPEM); err != nil {
 				return errors.Wrap(err, "unable to save x509 cacert")
 			}
 		}
@@ -205,36 +186,16 @@ func run(idConfig *identity.IdentityConfig, stopChan <-chan struct{}) error {
 	}
 
 	postRequest := func() error {
-
 		log.Infoln("Attempting to create/refresh x509 cert from identity provider...")
 
-		// TODO: from here
-		var id *zts.InstanceIdentity
-		var keyPem []byte
-		var err error
-		if idConfig.Init {
-			id, keyPem, err = identity.InitIdentity(*idConfig)
-		} else {
-			id, keyPem, err = identity.RefreshIdentity(*idConfig)
-		}
-
+		id, keyPem, err := identity.GetX509Cert(*idConfig)
 		if err != nil {
 			log.Errorf("Error while creating/refreshing x509 cert: %s", err.Error())
 			return err
 		}
 
-		idContext := id2Res(id, keyPem)
-
 		log.Infoln("Successfully created/refreshed x509 cert from identity provider")
-
-		x509Cert, err := util.CertificateFromPEMBytes(idContext.CertPEM)
-		if err != nil {
-			return errors.Wrap(err, "unable to parse x509 cert")
-		}
-		log.Infof("[New Certificate] Subject: %s, Issuer: %s, NotBefore: %s, NotAfter: %s, SerialNumber: %s",
-			x509Cert.Subject, x509Cert.Issuer, x509Cert.NotBefore, x509Cert.NotAfter, x509Cert.SerialNumber)
-
-		return writeFiles(idContext)
+		return writeFiles(id, keyPem)
 	}
 
 	if idConfig.Init {
@@ -261,7 +222,7 @@ func main() {
 	flag.CommandLine.Parse([]string{}) // initialize glog with defaults
 	stopChan := make(chan struct{})
 	ch := make(chan os.Signal, 1)
-	//signal.Notify(ch, syscall.SIGTERM, os.Interrupt)
+	signal.Notify(ch, syscall.SIGTERM, os.Interrupt)
 	go func() {
 		<-ch
 		log.Println("Shutting down...")

@@ -1,3 +1,6 @@
+// Copyright 2020, Verizon Media Inc.
+// Licensed under the terms of the 3-Clause BSD license. See LICENSE file in
+// github.com/yahoo/k8s-athenz-identity for terms.
 package log
 
 import (

@@ -1,0 +1,16 @@
+language: go
+env:
+  - GO111MODULE=on
+
+go:
+  - 1.13.x
+
+script:
+  - go build -v -race ./...
+  - diff -u <(echo -n) <(gofmt -d .)
+  - go vet ./...
+  - go test -v -race ./...
+
+branches:
+  only:
+    - master

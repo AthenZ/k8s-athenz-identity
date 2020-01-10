@@ -1,5 +1,6 @@
-// Copyright 2017, Yahoo Holdings Inc.
-// Licensed under the terms of the BSD-3-Clause license. See LICENSE file for terms.
+// Copyright 2020, Verizon Media Inc.
+// Licensed under the terms of the 3-Clause BSD license. See LICENSE file in
+// github.com/yahoo/k8s-athenz-identity for terms.
 
 package util
 
