@@ -8,13 +8,13 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"github.com/yahoo/athenz/clients/go/zts"
+	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
 	"time"
-	"github.com/yahoo/athenz/clients/go/zts"
-	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 )
 
 // IdentityConfig from cmd line args

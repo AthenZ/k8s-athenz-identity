@@ -14,11 +14,11 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"fmt"
+	"github.com/pkg/errors"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
-	"github.com/pkg/errors"
 )
 
 // KeyType is the type of private key.
@@ -283,4 +283,3 @@ func GenerateKeyAndCSR(opts CSROptions) (keyPEM, csrPEM []byte, err error) {
 	csrPEM, err = GenerateCSR(k, opts)
 	return
 }
-

@@ -263,4 +263,3 @@ func TestGenerateCSRForECDSA(t *testing.T) {
 	a.Equal(sans.String(), sans2.String())
 	a.EqualValues(asn1Subject, req.RawSubject)
 }
-

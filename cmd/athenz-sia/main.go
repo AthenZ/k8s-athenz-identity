@@ -16,8 +16,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/yahoo/athenz/clients/go/zts"
 	"github.com/yahoo/k8s-athenz-identity/pkg/identity"
-	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 	"github.com/yahoo/k8s-athenz-identity/pkg/log"
+	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 )
 
 const serviceName = "athenz-sia"
