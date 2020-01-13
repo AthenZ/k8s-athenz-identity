@@ -16,7 +16,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -207,9 +206,9 @@ func main() {
 
 	frontend := *appName + "-frontend"
 	backend := *appName + "-backend"
-	adminDomainK8s := strings.Replace(*adminDomain, ".", "-", -1)
-	frontendServerURL := frontend + "." + adminDomainK8s + "-" + *namespace + "." + *clusterDNSSuffix
-	backendServerURL := backend + "." + adminDomainK8s + "-" + *namespace + "." + *clusterDNSSuffix
+	domainDNSPart := util.DomainToDNSPart(*adminDomain)
+	frontendServerURL := frontend + "." + domainDNSPart + "-" + *namespace + "." + *clusterDNSSuffix
+	backendServerURL := backend + "." + domainDNSPart + "-" + *namespace + "." + *clusterDNSSuffix
 	frontendCommonName := *adminDomain + "." + *namespace + "." + frontend
 	backendCommonName := *adminDomain + "." + *namespace + "." + backend
 
