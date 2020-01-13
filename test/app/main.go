@@ -4,9 +4,9 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -204,10 +204,10 @@ func main() {
 	backend := f.Bool("backend", false, "Run only the backend application.")
 	key := f.String("key", "/var/run/athenz/service.key.pem", "Service private key.")
 	cert := f.String("cert", "/var/run/athenz/service.cert.pem", "Service cert.")
-	caCert := f.String("caCert", "/var/run/athenz/ca.cert.pem", "CA cert.")
-	backendURL := f.String("backendURL", "", "Backend URL of the backend application the frontend will call.")
-	frontendCommonName := f.String("frontendCommonName", "", "Frontend common name to verify against.")
-	backendCommonName := f.String("backendCommonName", "", "Backend common name to verify against.")
+	caCert := f.String("ca-cert", "/var/run/athenz/ca.cert.pem", "CA cert.")
+	backendURL := f.String("backend-url", "", "Backend URL of the backend application the frontend will call.")
+	frontendCommonName := f.String("frontend-common-name", "", "Frontend common name to verify against.")
+	backendCommonName := f.String("backend-common-name", "", "Backend common name to verify against.")
 
 	err := f.Parse(args)
 	if err != nil {
@@ -248,7 +248,7 @@ func main() {
 
 	serverTlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
-		ClientCAs: pool,
+		ClientCAs:  pool,
 		ClientAuth: tls.VerifyClientCertIfGiven,
 	}
 	serverTlsConfig.GetCertificate = func(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -268,7 +268,7 @@ func main() {
 
 	if *backend {
 		bMgr := &backendMgr{
-			reloader: reloader,
+			reloader:           reloader,
 			frontendCommonName: *frontendCommonName,
 		}
 		defer bMgr.reloader.Close()
@@ -278,7 +278,7 @@ func main() {
 	if *frontend {
 		clientTlsConfig := &tls.Config{
 			MinVersion: tls.VersionTLS12,
-			RootCAs: pool,
+			RootCAs:    pool,
 			ServerName: *backendURL,
 		}
 		clientTlsConfig.GetClientCertificate = func(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
