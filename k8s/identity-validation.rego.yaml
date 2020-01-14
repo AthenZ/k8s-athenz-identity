@@ -64,4 +64,4 @@ kind: ConfigMap
 metadata:
   labels:
     openpolicyagent.org/policy: rego
-  name: system-main.rego
+  name: identity-validation.rego
