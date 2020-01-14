@@ -49,8 +49,6 @@ spec:
       - configMap:
           name: identity-validation.rego
         name: config
-      - emptyDir: {}
-        name: keys
 
 ---
 apiVersion: v1
