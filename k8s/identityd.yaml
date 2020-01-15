@@ -18,17 +18,9 @@ spec:
       - args:
         - run
         - --server
-        - --config-file=/config/config.yaml
         image: openpolicyagent/opa:0.14.0
         imagePullPolicy: IfNotPresent
         name: opa
-        lifecycle:
-          postStart:
-            exec:
-              command:
-              - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' > /tmp/api-pubkey.pem
-                echo {\"cert\"":" \"$(cat /tmp/api-pubkey.pem)\"}  > /tmp/cert.json
-                curl "localhost:8181/v1/data/kubernetes/keys" -X PUT -d @/tmp/cert.json
         volumeMounts:
         - mountPath: /config
           name: config
@@ -41,25 +33,21 @@ spec:
         image: openpolicyagent/kube-mgmt:0.10
         imagePullPolicy: IfNotPresent
         name: mgmt
-      initContainers:
-      - command:
-        - echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /keys/api-pubkey.pem
-        image: openpolicyagent/kube-mgmt:0.10
-        imagePullPolicy: IfNotPresent
-        name: initpolicy
-        resources:
-          limits:
-            cpu: "1"
-            memory: 2Gi
-        terminationMessagePath: /dev/termination-log
-        terminationMessagePolicy: File
-        volumeMounts:
-        - mountPath: /keys
-          name: keys
+        lifecycle:
+          postStart:
+            exec:
+              command:
+                - sh
+                - -c
+                - >
+                  apk add curl openssl &&
+                  echo | openssl s_client -connect kubernetes.default.svc:443 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' > /tmp/api-pubkey.pem &&
+                  echo {\"cert\"":" \"$(cat /tmp/api-pubkey.pem)\"}  > /tmp/cert.json &&
+                  curl "localhost:8181/v1/data/kubernetes/keys" -X PUT -d @/tmp/cert.json
       serviceAccountName: identityd
       volumes:
       - configMap:
-          name: opa-config
+          name: identity-validation.rego
         name: config
 
 ---
