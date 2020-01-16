@@ -1,0 +1,70 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "args": [
+              "--mode=refresh"
+            ],
+            "image": "local/athenz-sia:latest",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "sia",
+            "volumeMounts": [
+              {
+                "mountPath": "/var/run/athenz",
+                "name": "tls-certs"
+              },
+              {
+                "mountPath": "/var/run/secrets/kubernetes.io/bound-serviceaccount",
+                "name": "identityd-token",
+                "readOnly": true
+              }
+            ]
+          }
+        ],
+        "initContainers": [
+          {
+            "args": [
+              "--mode=init"
+            ],
+            "image": "local/athenz-sia:latest",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "sia-init",
+            "volumeMounts": [
+              {
+                "mountPath": "/var/run/athenz",
+                "name": "tls-certs"
+              },
+              {
+                "mountPath": "/var/run/secrets/kubernetes.io/bound-serviceaccount",
+                "name": "identityd-token",
+                "readOnly": true
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "emptyDir": {},
+            "name": "tls-certs"
+          },
+          {
+            "name": "identityd-token",
+            "projected": {
+              "sources": [
+                {
+                  "serviceAccountToken": {
+                    "audience": "athenz-identityd",
+                    "expirationSeconds": 3600,
+                    "path": "token"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
