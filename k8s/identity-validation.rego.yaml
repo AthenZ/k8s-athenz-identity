@@ -51,7 +51,7 @@ data:
     pod_name = k8s_claims.pod.name
 
     pod_verified = true {
-        input.service = input.service
+        pod_ns = k8s_claims.namespace
         input.service = k8s_claims.serviceaccount.name
         input.attributes.sanIP = pods[pod_ns][pod_name].status.podIP
         input.attributes.clientIP = pods[pod_ns][pod_name].status.podIP
