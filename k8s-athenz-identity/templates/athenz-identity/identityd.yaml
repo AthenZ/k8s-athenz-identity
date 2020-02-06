@@ -4,6 +4,7 @@ metadata:
   labels:
     app: identityd
   name: identityd
+  namespace: {{ .Values.athenz_identity.namespace }}
 spec:
   replicas: 1
   selector:

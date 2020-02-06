@@ -1,0 +1,11 @@
+athenz_identity:
+  namespace: kube-system
+test_app:
+  namespace: kube-test
+  provider_service: provider-athenz-domain.provider-athenz-service
+  dns_suffix: company.cloud
+  endpoint: https://zts.athenz.com
+  refresh_interval: 24h
+  frontendCommonName: test-app-athenz-domain.test-app-athenz-service
+  backendCommonName: test-app-athenz-domain.test-app-athenz-service
+  backendURL: athenz-service.athenz-domain.company.cloud
