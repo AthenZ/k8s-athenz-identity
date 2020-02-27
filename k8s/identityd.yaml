@@ -18,6 +18,7 @@ spec:
       - args:
         - run
         - --server
+        - /config/system-main.rego
         image: openpolicyagent/opa:0.14.0
         imagePullPolicy: IfNotPresent
         name: opa
