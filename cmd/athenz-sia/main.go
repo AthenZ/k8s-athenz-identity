@@ -51,6 +51,7 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		podIP           = envOrDefault("POD_IP", "")
 		podUID          = envOrDefault("POD_UID", "")
 		saTokenFile     = envOrDefault("SA_TOKEN_FILE", "/var/run/secrets/kubernetes.io/bound-serviceaccount/token")
+		serverCACert    = envOrDefault("SERER_CA_CERT", "")
 	)
 	f := flag.NewFlagSet(program, flag.ContinueOnError)
 	f.StringVar(&mode, "mode", mode, "mode, must be one of init or refresh, required")
@@ -64,6 +65,7 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	f.StringVar(&logDir, "log-dir", logDir, "directory to store the server log files")
 	f.StringVar(&logLevel, "log-level", logLevel, "logging level")
 	f.StringVar(&saTokenFile, "sa-token-file", saTokenFile, "bound sa jwt token file location")
+	f.StringVar(&serverCACert, "server-ca-cert", serverCACert, "path to CA cert file to verify ZTS server certs")
 
 	err := f.Parse(args)
 	if err != nil {
@@ -132,6 +134,7 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 		CaCertFile:      caCertFile,
 		Refresh:         ri,
 		Reloader:        reloader,
+		ServerCACert:    serverCACert,
 		SaTokenFile:     saTokenFile,
 		Endpoint:        endpoint,
 		ProviderService: providerService,
