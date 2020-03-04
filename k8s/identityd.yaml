@@ -21,13 +21,10 @@ spec:
         image: openpolicyagent/opa:0.14.0
         imagePullPolicy: IfNotPresent
         name: opa
-        volumeMounts:
-        - mountPath: /config
-          name: config
-          readOnly: true
       - args:
         - --opa-url=http://127.0.0.1:8181/v1
         - --enable-policies=true
+        - --policies=default
         - --replicate-path=kubernetes
         - --replicate=v1/pods
         image: openpolicyagent/kube-mgmt:0.10
@@ -45,10 +42,6 @@ spec:
                   echo {\"cert\"":" \"$(cat /tmp/api-pubkey.pem)\"}  > /tmp/cert.json &&
                   curl "localhost:8181/v1/data/kubernetes/keys" -X PUT -d @/tmp/cert.json
       serviceAccountName: identityd
-      volumes:
-      - configMap:
-          name: identity-validation.rego
-        name: config
 
 ---
 apiVersion: v1
