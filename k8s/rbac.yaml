@@ -26,7 +26,6 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: identityd
-  namespace: default
 roleRef:
   kind: ClusterRole
   name: identityd
