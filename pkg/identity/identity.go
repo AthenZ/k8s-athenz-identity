@@ -5,6 +5,7 @@ package identity
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
@@ -26,6 +27,7 @@ type IdentityConfig struct {
 	CaCertFile      string
 	Refresh         time.Duration
 	Reloader        *util.CertReloader
+	ServerCACert    string
 	SaTokenFile     string
 	Endpoint        string
 	ProviderService string
@@ -55,9 +57,23 @@ func InitIdentityHandler(config *IdentityConfig) (*identityHandler, error) {
 			return config.Reloader.GetLatestCertificate()
 		}
 	}
-	client := zts.NewClient(config.Endpoint, &http.Transport{
+
+	t := &http.Transport{
 		TLSClientConfig: tlsConfig,
-	})
+	}
+
+	if config.ServerCACert != "" {
+		certPool := x509.NewCertPool()
+		caCert, err := ioutil.ReadFile(config.ServerCACert)
+		if err != nil {
+			return nil, err
+		}
+		certPool.AppendCertsFromPEM(caCert)
+		tlsConfig.RootCAs = certPool
+		t.TLSClientConfig = tlsConfig
+	}
+
+	client := zts.NewClient(config.Endpoint, t)
 
 	domain := util.NamespaceToDomain(config.Namespace)
 	domainDNSPart := util.DomainToDNSPart(domain)
