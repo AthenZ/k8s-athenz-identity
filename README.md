@@ -126,10 +126,10 @@ or ZMS UI corresponding to the Identityd k8s service
 ### Usage
 1. The application deployments that require Athenz identity certs need the SIA container
 and the kubernetes bound service account JWT volume mount added to the pod template
-using the sample [patch](k8s/patch/sia.yaml)
+using the sample [patch](k8s/patch/sia.json)
 
     ```
-    kubectl patch deploy <app.yaml> -p k8s-athenz-identity/k8s/patch/sia.yaml
+    kubectl patch deploy <app.yaml> -p "$(k8s/patch/sia.json)"
     ``` 
 
 The generated Athenz cert and key is stored under the `tls-certs` volume mount.
