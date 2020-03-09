@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/kevindiu/k8s-athenz-identity/pkg/log"
 	"github.com/yahoo/athenz/clients/go/zts"
 	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 )
@@ -102,6 +103,7 @@ func InitIdentityHandler(config *IdentityConfig) (*identityHandler, error) {
 
 // GetX509Cert makes ZTS API calls to generate an X.509 certificate
 func (h *identityHandler) GetX509Cert() (*zts.InstanceIdentity, []byte, error) {
+	log.Debugf("Generating Key And CSR with the following parameters: Subject: %v, SAN: %v", h.csrOptions.Subject, h.csrOptions.SANs)
 	keyPEM, csrPEM, err := util.GenerateKeyAndCSR(h.csrOptions)
 	if err != nil {
 		return nil, nil, err
@@ -112,25 +114,31 @@ func (h *identityHandler) GetX509Cert() (*zts.InstanceIdentity, []byte, error) {
 		return nil, nil, err
 	}
 
+	provider := zts.ServiceName(h.config.ProviderService)
+	domain := zts.DomainName(h.domain)
+	service := zts.SimpleName(h.service)
+	attestationData := string(saToken)
+	csrPEMString := string(csrPEM)
+
 	if h.config.Init {
+		log.Debugf("Sending PostInstanceRegisterInformation request to ZTS, Provider: %s, Domain: %s, Service: %s, Attestation Data: %s, CSR: %s", provider, domain, service, attestationData, csrPEM)
 		id, _, err := h.client.PostInstanceRegisterInformation(&zts.InstanceRegisterInformation{
-			Provider:        zts.ServiceName(h.config.ProviderService),
-			Domain:          zts.DomainName(h.domain),
-			Service:         zts.SimpleName(h.service),
-			AttestationData: string(saToken),
-			Csr:             string(csrPEM),
+			Provider:        provider,
+			Domain:          domain,
+			Service:         service,
+			AttestationData: attestationData,
+			Csr:             csrPEMString,
 		})
 		return id, keyPEM, err
 	}
 
-	id, err := h.client.PostInstanceRefreshInformation(
-		zts.ServiceName(h.config.ProviderService),
-		zts.DomainName(h.domain),
-		zts.SimpleName(h.service),
-		zts.PathElement(h.config.PodUID),
+	podUID := zts.PathElement(h.config.PodUID)
+
+	log.Debugf("Sending PostInstanceRefreshInformation request to ZTS, Provider: %s, Domain: %s, Service: %s, podUID: %s, Attestation Data: %s, CSR: %s", provider, domain, service, podUID, attestationData, csrPEM)
+	id, err := h.client.PostInstanceRefreshInformation(provider, domain, service, podUID,
 		&zts.InstanceRefreshInformation{
-			AttestationData: string(saToken),
-			Csr:             string(csrPEM),
+			AttestationData: attestationData,
+			Csr:             csrPEMString,
 		})
 
 	return id, keyPEM, err
