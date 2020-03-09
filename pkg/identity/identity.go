@@ -14,8 +14,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/kevindiu/k8s-athenz-identity/pkg/log"
 	"github.com/yahoo/athenz/clients/go/zts"
+	"github.com/yahoo/k8s-athenz-identity/pkg/log"
 	"github.com/yahoo/k8s-athenz-identity/pkg/util"
 )
 
