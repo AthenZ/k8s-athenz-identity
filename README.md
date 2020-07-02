@@ -98,12 +98,14 @@ in the official documentation [here](https://kubernetes.io/docs/setup/).
 [UI](https://yahoo.github.io/athenz/site/setup_ui_prod/) server installed.
 
 ### Setup
-1. Clone the repository and use kubectl to create the [RBAC](k8s/rbac.yaml), and
-the Identity provider [deployment and service](k8s/identityd.yaml)
+1. Clone the repository and use kubectl to create the [RBAC](k8s-athenz-identity/templates/athenz-identity/rbac.yaml), and
+the Identity provider [deployment and service](k8s-athenz-identity/templates/athenz-identity/identityd.yaml)
 
     ```
     git clone https://github.com/yahoo/k8s-athenz-identity.git
-    kubectl apply -f k8s-athenz-identity/k8s
+    cd k8s-athenz-identity
+    helm template k8s-athenz-identity --output-dir /tmp/k8s-athenz-identity
+    kubectl apply -f /tmp/k8s-athenz-identity/athenz-identity
     ```
 
 2. Create an Athenz domain and a service using [zms-cli](https://github.com/yahoo/athenz/tree/master/utils/zms-cli)
@@ -126,10 +128,10 @@ or ZMS UI corresponding to the Identityd k8s service
 ### Usage
 1. The application deployments that require Athenz identity certs need the SIA container
 and the kubernetes bound service account JWT volume mount added to the pod template
-using the sample [patch](k8s/patch/sia.yaml)
+using the sample [patch](k8s-athenz-identity/templates/athenz-identity/patch/sia.yaml)
 
     ```
-    kubectl patch deploy <app.yaml> -p k8s-athenz-identity/k8s/patch/sia.yaml
+    kubectl patch deploy <app.yaml> -p k8s-athenz-identity/templates/athenz-identity/patch/sia.yaml
     ``` 
 
 The generated Athenz cert and key is stored under the `tls-certs` volume mount.

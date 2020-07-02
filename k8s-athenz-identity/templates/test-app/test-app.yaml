@@ -1,0 +1,210 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: athenz-identity-test-app
+  name: athenz-identity-test-app
+  namespace: {{ .Values.test_app.namespace }}
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: athenz-identity-test-app
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: athenz-identity-test-app
+      name: athenz-identity-test-app
+    spec:
+      containers:
+      - args:
+        - --mode=refresh
+        - --provider-service={{ .Values.test_app.provider_service }}
+        - --dns-suffix={{ .Values.test_app.dns_suffix }}
+        - --endpoint={{ .Values.test_app.endpoint }}
+        - --refresh-interval={{ .Values.test_app.refresh_interval }}
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.uid
+        - name: SERVICEACCOUNT
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.serviceAccountName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.hostIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        image: local/athenz-sia:latest
+        imagePullPolicy: IfNotPresent
+        name: sia
+        resources:
+          limits:
+            cpu: 100m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 500Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/run/athenz
+          name: tls-certs
+        - mountPath: /var/run/secrets/kubernetes.io/bound-serviceaccount
+          name: bound-sa
+          readOnly: true
+      - args:
+        - --frontendCommonName={{ .Values.test_app.frontendCommonName }}
+        - --backendCommonName={{ .Values.test_app.backendCommonName }}
+        - --backendURL={{ .Values.test_app.backendURL }}
+        image: local/athenz-identity-test-app:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /status.html
+            port: 4443
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 15
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: main
+        readinessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /status.html
+            port: 4443
+            scheme: HTTPS
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/run/athenz
+          name: tls-certs
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - args:
+        - --mode=init
+        - --provider-service={{ .Values.test_app.provider_service }}
+        - --dns-suffix={{ .Values.test_app.dns_suffix }}
+        - --endpoint={{ .Values.test_app.endpoint }}
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.uid
+        - name: SERVICEACCOUNT
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.serviceAccountName
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.hostIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+        image: local/athenz-sia:latest
+        imagePullPolicy: IfNotPresent
+        name: sia-init
+        resources:
+          limits:
+            cpu: 100m
+            memory: 500Mi
+          requests:
+            cpu: 100m
+            memory: 500Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/run/athenz
+          name: tls-certs
+        - mountPath: /var/run/secrets/kubernetes.io/bound-serviceaccount
+          name: bound-sa
+          readOnly: true
+      serviceAccountName: athenz-identity-test-app
+      securityContext:
+        fsGroup: 10396
+        runAsUser: 10396
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: tls-certs
+      - name: bound-sa
+        projected:
+          defaultMode: 420
+          sources:
+          - serviceAccountToken:
+              audience: athenz-identityd
+              expirationSeconds: 3600
+              path: token
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: athenz-identity-test-app
+  name: athenz-identity-test-app
+  namespace: {{ .Values.test_app.namespace }}

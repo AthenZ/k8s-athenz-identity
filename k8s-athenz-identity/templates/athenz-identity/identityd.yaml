@@ -4,6 +4,7 @@ metadata:
   labels:
     app: identityd
   name: identityd
+  namespace: {{ .Values.athenz_identity.namespace }}
 spec:
   replicas: 1
   selector:
@@ -58,7 +59,7 @@ metadata:
   labels:
     app: identityd
   name: identityd
-
+  namespace: {{ .Values.athenz_identity.namespace }}
 ---
 apiVersion: v1
 kind: Service
@@ -66,6 +67,7 @@ metadata:
   labels:
     app: identityd
   name: identityd
+  namespace: {{ .Values.athenz_identity.namespace }}
 spec:
   selector:
     app: identityd

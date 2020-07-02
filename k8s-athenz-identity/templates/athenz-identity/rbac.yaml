@@ -26,6 +26,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: identityd
+  namespace: {{ .Values.athenz_identity.namespace }}
 roleRef:
   kind: ClusterRole
   name: identityd
