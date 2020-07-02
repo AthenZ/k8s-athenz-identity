@@ -207,3 +207,4 @@ metadata:
   labels:
     app: athenz-identity-test-app
   name: athenz-identity-test-app
+  namespace: {{ .Values.test_app.namespace }}
