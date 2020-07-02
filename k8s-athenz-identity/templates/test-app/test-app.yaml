@@ -26,10 +26,10 @@ spec:
       containers:
       - args:
         - --mode=refresh
-        - --provider-service {{ .Values.test_app.provider_service }}
-        - --dns-suffix {{ .Values.test_app.dns_suffix }}
-        - --endpoint {{ .Values.test_app.endpoint }}
-        - --refresh-interval {{ .Values.test_app.refresh_interval }}
+        - --provider-service={{ .Values.test_app.provider_service }}
+        - --dns-suffix={{ .Values.test_app.dns_suffix }}
+        - --endpoint={{ .Values.test_app.endpoint }}
+        - --refresh-interval={{ .Values.test_app.refresh_interval }}
         env:
         - name: NAMESPACE
           valueFrom:
@@ -127,9 +127,9 @@ spec:
       initContainers:
       - args:
         - --mode=init
-        - --provider-service {{ .Values.test_app.provider_service }}
-        - --dns-suffix {{ .Values.test_app.dns_suffix }}
-        - --endpoint {{ .Values.test_app.endpoint }}
+        - --provider-service={{ .Values.test_app.provider_service }}
+        - --dns-suffix={{ .Values.test_app.dns_suffix }}
+        - --endpoint={{ .Values.test_app.endpoint }}
         env:
         - name: NAMESPACE
           valueFrom:
