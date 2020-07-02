@@ -113,7 +113,7 @@ or ZMS UI corresponding to the Identityd k8s service
 
     ```
     # Build the zms-cli utility to interact with the Athenz ZMS server
-    go get https://github.com/yahoo/athenz/tree/master/utils/zms-cli
+    go get github.com/yahoo/athenz/utils/zms-cli
     
     # Create an Athenz domain associated with the Kubernetes cluster
     zms-cli add-domain k8s-cluster-name 
