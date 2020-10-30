@@ -76,7 +76,7 @@ evaluation engine also has built-in support for JWT verification and making HTTP
 requests. This helps us to verify the attestation data JWT either by making Kubernetes
 API TokenReview requests or by locally validating the signature using the pre-loaded
 kubernetes API public key. Other field verifications that depend on the pod metadata
-can use the resource replication feature and cache the pod resources. 
+can use the resource replication feature and cache the pod resources.
 
 The identity provider pod contains two containers:
 - **Opa** - Evaluates the identity verification checks with information provided with
@@ -93,7 +93,7 @@ specified below.
 - **Kubernetes cluster** - A running Kubernetes cluster, version 1.13 or higher, is
 required with admin access. More information on how to setup a cluster can be found
 in the official documentation [here](https://kubernetes.io/docs/setup/).
-- **Athenz** - A complete Athenz setup including [ZMS](https://yahoo.github.io/athenz/site/setup_zms_prod/), 
+- **Athenz** - A complete Athenz setup including [ZMS](https://yahoo.github.io/athenz/site/setup_zms_prod/),
 [ZTS](https://yahoo.github.io/athenz/site/setup_zts_prod/), and an optional
 [UI](https://yahoo.github.io/athenz/site/setup_ui_prod/) server installed.
 
@@ -112,16 +112,16 @@ or ZMS UI corresponding to the Identityd k8s service
     ```
     # Build the zms-cli utility to interact with the Athenz ZMS server
     go get github.com/yahoo/athenz/utils/zms-cli
-    
+
     # Create an Athenz domain associated with the Kubernetes cluster
-    zms-cli add-domain k8s-cluster-name 
-    
-    # Create an Athenz service on the cluster domain to associate it with the Identityd Kubernetes service 
+    zms-cli add-domain k8s-cluster-name
+
+    # Create an Athenz service on the cluster domain to associate it with the Identityd Kubernetes service
     zms-cli -d k8s-cluster-name add-service identityd
-    
+
     # Set the Identityd service endpoint to point to the kubernetes identityd service
     zms-cli -d k8s-cluster-name set-service-endpoint identityd identityd.default.svc.cluster.local
-    ``` 
+    ```
 
 ### Usage
 1. The application deployments that require Athenz identity certs need the SIA container
@@ -130,9 +130,49 @@ using the sample [patch](k8s/patch/sia.yaml)
 
     ```
     kubectl patch deploy <app.yaml> -p k8s-athenz-identity/k8s/patch/sia.yaml
-    ``` 
+    ```
 
 The generated Athenz cert and key is stored under the `tls-certs` volume mount.
+
+## Configuration
+
+### SIA
+
+The following table outlines the configuration parameters for the SIA. Environment variables can be used instead of the parameters
+
+| Parameter       | Environment Variable | Description                                        | Default                                                  |
+|:----------------|:---------------------|:---------------------------------------------------|:---------------------------------------------------------|
+|mode             |MODE                  |Mode, must be one of init or refresh                |init                                                      |
+|endpoint         |ENDPOINT              |Athenz ZTS endpoint                                 |                                                          |
+|provider-service |PROVIDER_SERVICE      |Identity Provider service                           |                                                          |
+|dns-suffix       |DNS_SUFFIX            |DNS Suffix for the certs                            |                                                          |
+|refresh-interval |REFRESH_INTERVAL      |Interval to refresh the certs                       |24h                                                       |
+|out-cert         |CERT_FILE             |Path to output the certificate                      |/var/run/athenz/service.cert.pem                          |
+|out-key          |KEY_FILE              |Path to output the key                              |/var/run/athenz/service.key.pem                           |
+|out-ca-cert      |CA_CERT_FILE          |Path to output the ca certificate                   |/var/run/athenz/ca.cert.pem                               |
+|log-dir          |LOG_DIR               |Directory to store the server log files             |/var/log/athenz-sia                                       |
+|log-level        |LOG_LEVEL             |Logging level                                       |INFO                                                      |
+|sa-token-file    |SA_TOKEN_FILE         |Bound sa token file location                        |/var/run/secrets/kubernetes.io/bound-serviceaccount/token |
+|server-ca-cert   |SERVER_CA_CERT        |Path to the ca cert file to verify ZTS server certs |                                                          |
+
+e.g.
+
+```bash
+$ athenz-sia
+    --mode=init
+    --out-cert=/var/run/athenz/service.cert.pem
+    --out-key=/var/run/athenz/service.key.pem
+    --out-ca-cert=/var/run/athenz/ca.cert.pem
+    ...
+
+$ athenz-sia
+    --mode=refresh
+    --refresh-interval=720h
+    --out-cert=/var/run/athenz/service.cert.pem
+    --out-key=/var/run/athenz/service.key.pem
+    --out-ca-cert=/var/run/athenz/ca.cert.pem
+    ...
+```
 
 ## Contribute
 Please refer to the [contributing](Contributing.md) file for information about
