@@ -71,8 +71,7 @@ func parseFlags(program string, args []string) (*identity.IdentityConfig, error)
 	err := f.Parse(args)
 	if err != nil {
 		if err == flag.ErrHelp {
-			err = errEarlyExit
-			return nil, err
+			return nil, errEarlyExit
 		}
 		log.InitLogger(filepath.Join(logDir, fmt.Sprintf("%s.%s.log", serviceName, logLevel)), logLevel, true)
 		return nil, err
